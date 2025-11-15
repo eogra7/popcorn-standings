@@ -56,12 +56,15 @@ const Leaderboard = () => {
     totalTime: number;
   } | null>(null);
   const [summaryCloseTimer, setSummaryCloseTimer] = useState(10);
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false);
+  const [endMeetingProgress, setEndMeetingProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const speakingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const tickTockIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const summaryTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const endMeetingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
@@ -282,6 +285,84 @@ const Leaderboard = () => {
         return;
       }
 
+      // Handle 'e' key hold for ending meeting
+      if (e.key === "e" && mode === "meeting" && !isEndingMeeting && !e.repeat) {
+        setIsEndingMeeting(true);
+        setEndMeetingProgress(0);
+        
+        let progress = 0;
+        endMeetingTimerRef.current = setInterval(() => {
+          progress += 0.1; // 100ms intervals for 5 seconds = 50 steps
+          setEndMeetingProgress(progress);
+          
+          if (progress >= 5) {
+            // 5 seconds completed - execute meeting end
+            if (endMeetingTimerRef.current) {
+              clearInterval(endMeetingTimerRef.current);
+              endMeetingTimerRef.current = null;
+            }
+            
+            // Save final speaking time for current participant
+            const currentParticipantId = participants[focusedIndex].id;
+            const finalSpeakingTimes = {
+              ...participantSpeakingTimes,
+              [currentParticipantId]: (participantSpeakingTimes[currentParticipantId] || 0) + speakingDuration,
+            };
+            
+            // Mark current participant as having spoken first
+            setParticipants((prev) => {
+              const updated = prev.map((p, i) => 
+                i === focusedIndex ? { ...p, hasSpoken: true } : p
+              );
+              
+              // Check if all participants have now spoken
+              const allSpoken = updated.every((p) => p.hasSpoken);
+              
+              if (allSpoken) {
+                // Success - award point to current participant, prepare summary
+                const updatedWithScore = updated.map((p, i) => ({
+                  ...p,
+                  score: i === focusedIndex ? p.score + 1 : p.score,
+                  hasSpoken: false
+                }));
+                
+                // Prepare meeting summary data
+                const stats: ParticipantStats[] = updatedWithScore.map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  score: p.score,
+                  speakingTime: finalSpeakingTimes[p.id] || 0,
+                })).sort((a, b) => b.score - a.score);
+                
+                setMeetingSummaryData({
+                  stats,
+                  totalTime: meetingTime,
+                });
+                
+                setMode("normal");
+                setMeetingTime(0);
+                setParticipantSpeakingTimes({});
+                setShowMeetingSummary(true);
+                playSound(1000, 150); // High success sound
+                
+                return updatedWithScore;
+              } else {
+                // Failure - not everyone has spoken, apply penalty, revert hasSpoken
+                triggerError(prev[focusedIndex].id);
+                return prev.map((p, i) => 
+                  i === focusedIndex ? { ...p, score: p.score - 1 } : p
+                );
+              }
+            });
+            
+            setIsEndingMeeting(false);
+            setEndMeetingProgress(0);
+          }
+        }, 100);
+        
+        return;
+      }
+
       // Handle 'r' key for revealing status
       if (e.key === "r" && !isRevealingStatus && mode === "meeting") {
         setIsRevealingStatus(true);
@@ -388,61 +469,6 @@ const Leaderboard = () => {
           setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
           playSound(700, 100);
         }
-      } else if (e.key === "e" && mode === "meeting") {
-        e.preventDefault();
-        
-        // Save final speaking time for current participant
-        const currentParticipantId = participants[focusedIndex].id;
-        const finalSpeakingTimes = {
-          ...participantSpeakingTimes,
-          [currentParticipantId]: (participantSpeakingTimes[currentParticipantId] || 0) + speakingDuration,
-        };
-        
-        // Mark current participant as having spoken first
-        setParticipants((prev) => {
-          const updated = prev.map((p, i) => 
-            i === focusedIndex ? { ...p, hasSpoken: true } : p
-          );
-          
-          // Check if all participants have now spoken
-          const allSpoken = updated.every((p) => p.hasSpoken);
-          
-          if (allSpoken) {
-            // Success - award point to current participant, prepare summary
-            const updatedWithScore = updated.map((p, i) => ({
-              ...p,
-              score: i === focusedIndex ? p.score + 1 : p.score,
-              hasSpoken: false
-            }));
-            
-            // Prepare meeting summary data
-            const stats: ParticipantStats[] = updatedWithScore.map((p) => ({
-              id: p.id,
-              name: p.name,
-              score: p.score,
-              speakingTime: finalSpeakingTimes[p.id] || 0,
-            })).sort((a, b) => b.score - a.score);
-            
-            setMeetingSummaryData({
-              stats,
-              totalTime: meetingTime,
-            });
-            
-            setMode("normal");
-            setMeetingTime(0);
-            setParticipantSpeakingTimes({});
-            setShowMeetingSummary(true);
-            playSound(1000, 150); // High success sound
-            
-            return updatedWithScore;
-          } else {
-            // Failure - not everyone has spoken, apply penalty, revert hasSpoken
-            triggerError(prev[focusedIndex].id);
-            return prev.map((p, i) => 
-              i === focusedIndex ? { ...p, score: p.score - 1 } : p
-            );
-          }
-        });
       } else if (e.key === "j") {
         e.preventDefault();
         const nextIndex = (focusedIndex + 1) % participants.length;
@@ -524,6 +550,16 @@ const Leaderboard = () => {
       if (e.key === "r" && isRevealingStatus) {
         setIsRevealingStatus(false);
       }
+      
+      // Cancel meeting end if 'e' is released early
+      if (e.key === "e" && isEndingMeeting) {
+        if (endMeetingTimerRef.current) {
+          clearInterval(endMeetingTimerRef.current);
+          endMeetingTimerRef.current = null;
+        }
+        setIsEndingMeeting(false);
+        setEndMeetingProgress(0);
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -532,7 +568,7 @@ const Leaderboard = () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery, isRevealingStatus, showMeetingSummary, meetingTime, participantSpeakingTimes, speakingDuration]);
+  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery, isRevealingStatus, showMeetingSummary, meetingTime, participantSpeakingTimes, speakingDuration, isEndingMeeting]);
 
   // Calculate angle for arrow rotation to point at focused participant
   const angleToFocused = participants.length > 0 
@@ -607,7 +643,7 @@ const Leaderboard = () => {
                        <p><kbd className="rounded bg-muted px-2 py-1">m</kbd> - Toggle meeting mode</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">r</kbd> - Hold to reveal speaking status</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">s</kbd> - Toggle speaking status</p>
-                       <p><kbd className="rounded bg-muted px-2 py-1">e</kbd> - End meeting (awards +1 if all spoke, -1 if not)</p>
+                       <p><kbd className="rounded bg-muted px-2 py-1">e (hold 5s)</kbd> - End meeting (awards +1 if all spoke, -1 if not)</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+S</kbd> - Exit meeting mode and reset</p>
                        <p className="text-muted-foreground text-xs mt-1">In meeting mode, j/k auto-scores based on popcorn success. Timer tracks meeting duration.</p>
                      </div>
@@ -792,6 +828,38 @@ const Leaderboard = () => {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* End Meeting Confirmation */}
+        {isEndingMeeting && (
+          <div className="fixed inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center z-50 animate-fade-in">
+            <div className="w-full max-w-md mx-4">
+              <Card className="border-2 border-orange-500 bg-card shadow-2xl p-6">
+                <div className="text-center space-y-4">
+                  <h3 className="text-2xl font-bold text-foreground">Ending Meeting...</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Hold <kbd className="rounded bg-muted px-2 py-1 font-mono">e</kbd> for {Math.ceil(5 - endMeetingProgress)} more seconds
+                  </p>
+                  <p className="text-xs text-orange-500 font-semibold">
+                    ⚠️ Will fail if not everyone has spoken
+                  </p>
+                  
+                  {/* Progress bar */}
+                  <div className="space-y-2">
+                    <div className="h-4 bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-orange-500 transition-all duration-100 ease-linear"
+                        style={{ width: `${(endMeetingProgress / 5) * 100}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Release to cancel
+                    </p>
+                  </div>
+                </div>
+              </Card>
             </div>
           </div>
         )}
