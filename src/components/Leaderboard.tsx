@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, Minus, Info } from "lucide-react";
+import { Plus, Minus, Info, ArrowUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+
+const getInitials = (name: string): string => {
+  if (!name.trim()) return "?";
+  const parts = name.trim().split(/\s+/);
+  return parts.map(part => part[0]?.toUpperCase() || "").join("");
+};
 
 type Participant = {
   id: string;
@@ -91,11 +97,14 @@ const Leaderboard = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [mode, focusedIndex, participants, editValue]);
 
-  const sortedParticipants = [...participants].sort((a, b) => b.score - a.score);
+  // Calculate angle for arrow rotation to point at focused participant
+  const angleToFocused = participants.length > 0 
+    ? (focusedIndex / participants.length) * 360 
+    : 0;
 
   return (
     <div className="min-h-screen bg-background p-8">
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-bold tracking-tight text-foreground">
@@ -165,79 +174,91 @@ const Leaderboard = () => {
           </div>
         </div>
 
-        <Card className="border-2 border-border bg-card shadow-lg">
-          <div className="divide-y divide-border">
-            {sortedParticipants.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground">
+        <div className="relative aspect-square w-full max-w-4xl mx-auto">
+          {participants.length === 0 ? (
+            <Card className="flex h-full items-center justify-center border-2 border-border bg-card shadow-lg">
+              <div className="text-center text-muted-foreground">
                 No participants yet. Press <kbd className="rounded bg-muted px-2 py-1">o</kbd> to add one.
               </div>
-            ) : (
-              sortedParticipants.map((participant, sortedIdx) => {
-                const originalIndex = participants.findIndex(p => p.id === participant.id);
-                const isFocused = originalIndex === focusedIndex;
+            </Card>
+          ) : (
+            <>
+              {/* Participants in a circle */}
+              {participants.map((participant, index) => {
+                const angle = (index / participants.length) * 2 * Math.PI - Math.PI / 2;
+                const radius = 42; // percentage
+                const x = 50 + radius * Math.cos(angle);
+                const y = 50 + radius * Math.sin(angle);
+                const isFocused = index === focusedIndex;
                 const isEditing = isFocused && mode === "insert";
 
                 return (
                   <div
                     key={participant.id}
-                    className={`flex items-center gap-6 p-6 transition-all ${
-                      isFocused
-                        ? "bg-focus-bg shadow-[var(--shadow-focus)]"
-                        : "hover:bg-secondary/50"
-                    }`}
+                    className="absolute -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: `${x}%`, top: `${y}%` }}
                   >
                     <div
-                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl font-bold ${
-                        sortedIdx === 0
-                          ? "bg-gradient-to-br from-primary to-accent text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
+                      className={`flex flex-col items-center gap-2 transition-all ${
+                        isFocused ? "scale-110" : ""
                       }`}
                     >
-                      {sortedIdx + 1}
-                    </div>
-
-                    <div className="flex-1">
+                      <div
+                        className={`flex h-24 w-24 items-center justify-center rounded-lg text-3xl font-bold transition-all ${
+                          isFocused
+                            ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-[var(--shadow-focus)] ring-4 ring-primary/50"
+                            : "bg-card border-2 border-border text-card-foreground"
+                        }`}
+                      >
+                        {getInitials(participant.name)}
+                      </div>
+                      
                       {isEditing ? (
                         <input
                           ref={inputRef}
                           type="text"
                           value={editValue}
                           onChange={(e) => setEditValue(e.target.value)}
-                          className="w-full rounded-md border-2 border-primary bg-background px-3 py-2 text-2xl font-semibold text-foreground outline-none"
+                          className="w-32 rounded-md border-2 border-primary bg-background px-2 py-1 text-center text-sm font-semibold text-foreground outline-none"
                           placeholder="Enter name..."
                         />
                       ) : (
-                        <h3 className="text-2xl font-semibold text-card-foreground">
-                          {participant.name || "(unnamed)"}
-                        </h3>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div
-                        className={`flex items-center gap-2 rounded-lg px-6 py-3 text-3xl font-bold ${
-                          participant.score > 0
-                            ? "bg-success/10 text-success"
-                            : participant.score < 0
-                            ? "bg-destructive/10 text-destructive"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {participant.score > 0 && <Plus className="h-6 w-6" />}
-                        {participant.score < 0 && <Minus className="h-6 w-6" />}
-                        {participant.score}
-                      </div>
-
-                      {isFocused && (
-                        <div className="h-8 w-1 animate-pulse rounded-full bg-primary" />
+                        <div className="text-center">
+                          <p className="text-sm font-semibold text-foreground max-w-32 truncate">
+                            {participant.name || "(unnamed)"}
+                          </p>
+                          <div
+                            className={`mt-1 inline-flex items-center gap-1 rounded px-2 py-0.5 text-sm font-bold ${
+                              participant.score > 0
+                                ? "bg-success/10 text-success"
+                                : participant.score < 0
+                                ? "bg-destructive/10 text-destructive"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {participant.score > 0 && <Plus className="h-3 w-3" />}
+                            {participant.score < 0 && <Minus className="h-3 w-3" />}
+                            {participant.score}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
                 );
-              })
-            )}
-          </div>
-        </Card>
+              })}
+
+              {/* Center arrow */}
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <div
+                  className="transition-transform duration-500 ease-out"
+                  style={{ transform: `rotate(${angleToFocused}deg)` }}
+                >
+                  <ArrowUp className="h-16 w-16 text-primary drop-shadow-lg" />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         <div className="mt-6 flex justify-center gap-4 text-sm text-muted-foreground">
           <span>Press <kbd className="rounded bg-muted px-2 py-1">j/k</kbd> to navigate</span>
