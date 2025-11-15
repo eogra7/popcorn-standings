@@ -40,9 +40,13 @@ const Leaderboard = () => {
   const [errorParticipantId, setErrorParticipantId] = useState<string | null>(null);
   const [meetingTime, setMeetingTime] = useState(0);
   const [isRevealingStatus, setIsRevealingStatus] = useState(false);
+  const [speakingStartTime, setSpeakingStartTime] = useState<number | null>(null);
+  const [speakingDuration, setSpeakingDuration] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const speakingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const tickTockIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
@@ -93,6 +97,24 @@ const Leaderboard = () => {
     oscillator.stop(audioContext.currentTime + 0.8);
   };
 
+  const playTickTock = () => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 800;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+  };
+
   const triggerError = (participantId: string) => {
     setErrorParticipantId(participantId);
     playBuzzer();
@@ -118,6 +140,70 @@ const Leaderboard = () => {
       }
     };
   }, [mode]);
+
+  // Speaking timer effect for meeting mode
+  useEffect(() => {
+    if (mode === "meeting" && focusedIndex >= 0) {
+      // Start tracking speaking time when focused participant changes
+      setSpeakingStartTime(Date.now());
+      setSpeakingDuration(0);
+      
+      speakingTimerRef.current = setInterval(() => {
+        setSpeakingDuration((prev) => prev + 1);
+      }, 1000);
+      
+      // Clear tick-tock interval when speaker changes
+      if (tickTockIntervalRef.current) {
+        clearInterval(tickTockIntervalRef.current);
+        tickTockIntervalRef.current = null;
+      }
+    } else {
+      setSpeakingStartTime(null);
+      setSpeakingDuration(0);
+      if (speakingTimerRef.current) {
+        clearInterval(speakingTimerRef.current);
+        speakingTimerRef.current = null;
+      }
+      if (tickTockIntervalRef.current) {
+        clearInterval(tickTockIntervalRef.current);
+        tickTockIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (speakingTimerRef.current) {
+        clearInterval(speakingTimerRef.current);
+      }
+      if (tickTockIntervalRef.current) {
+        clearInterval(tickTockIntervalRef.current);
+      }
+    };
+  }, [mode, focusedIndex]);
+
+  // Tick-tock sound effect when speaking over 30 seconds
+  useEffect(() => {
+    if (mode === "meeting" && speakingDuration > 30) {
+      if (!tickTockIntervalRef.current) {
+        // Play immediately
+        playTickTock();
+        // Then play every 2 seconds
+        tickTockIntervalRef.current = setInterval(() => {
+          playTickTock();
+        }, 2000);
+      }
+    } else {
+      if (tickTockIntervalRef.current) {
+        clearInterval(tickTockIntervalRef.current);
+        tickTockIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (tickTockIntervalRef.current) {
+        clearInterval(tickTockIntervalRef.current);
+      }
+    };
+  }, [mode, speakingDuration]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -445,6 +531,7 @@ const Leaderboard = () => {
                 const isEditing = isFocused && mode === "insert";
                 const hasError = errorParticipantId === participant.id;
                 const isSearchMatch = matchesSearch(participant.name);
+                const isOvertime = isFocused && mode === "meeting" && speakingDuration > 30;
 
                 return (
                   <div
@@ -467,10 +554,17 @@ const Leaderboard = () => {
                               : "bg-card border-2 border-border text-card-foreground"
                           } ${
                             participant.hasSpoken && (mode !== "meeting" || isRevealingStatus) ? "opacity-50 transition-opacity duration-200" : ""
-                          } ${hasError ? "animate-flash-red" : ""}`}
+                          } ${hasError ? "animate-flash-red" : ""} ${
+                            isOvertime ? "ring-4 ring-orange-500 animate-pulse" : ""
+                          }`}
                         >
                           {getInitials(participant.name)}
                         </div>
+                        {isOvertime && (
+                          <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse whitespace-nowrap">
+                            {Math.floor(speakingDuration / 60)}:{(speakingDuration % 60).toString().padStart(2, '0')}
+                          </div>
+                        )}
                         {participant.hasSpoken && (mode !== "meeting" || isRevealingStatus) && (
                           <div className={`absolute -top-2 -right-2 h-6 w-6 rounded-full bg-green-500 border-2 border-background flex items-center justify-center transition-opacity duration-200 ${
                             mode === "meeting" && !isRevealingStatus ? "opacity-0" : "opacity-100"
