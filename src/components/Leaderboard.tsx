@@ -466,7 +466,7 @@ const Leaderboard = () => {
                               ? "bg-accent/50 border-2 border-accent text-accent-foreground ring-2 ring-accent/30"
                               : "bg-card border-2 border-border text-card-foreground"
                           } ${
-                            participant.hasSpoken ? "opacity-50" : ""
+                            participant.hasSpoken && (mode !== "meeting" || isRevealingStatus) ? "opacity-50 transition-opacity duration-200" : ""
                           } ${hasError ? "animate-flash-red" : ""}`}
                         >
                           {getInitials(participant.name)}
