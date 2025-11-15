@@ -312,6 +312,30 @@ const Leaderboard = () => {
           setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
           playSound(700, 100);
         }
+      } else if (e.key === "e" && mode === "meeting") {
+        e.preventDefault();
+        // Check if all participants have spoken
+        const allSpoken = participants.every((p) => p.hasSpoken);
+        
+        if (allSpoken) {
+          // Success - award point to current participant, exit meeting mode
+          setParticipants((prev) =>
+            prev.map((p, i) => ({
+              ...p,
+              score: i === focusedIndex ? p.score + 1 : p.score,
+              hasSpoken: false
+            }))
+          );
+          setMode("normal");
+          setMeetingTime(0);
+          playSound(1000, 150); // High success sound
+        } else {
+          // Failure - not everyone has spoken, apply penalty
+          setParticipants((prev) =>
+            prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
+          );
+          triggerError(participants[focusedIndex].id);
+        }
       } else if (e.key === "j") {
         e.preventDefault();
         const nextIndex = (focusedIndex + 1) % participants.length;
@@ -476,6 +500,7 @@ const Leaderboard = () => {
                        <p><kbd className="rounded bg-muted px-2 py-1">m</kbd> - Toggle meeting mode</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">r</kbd> - Hold to reveal speaking status</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">s</kbd> - Toggle speaking status</p>
+                       <p><kbd className="rounded bg-muted px-2 py-1">e</kbd> - End meeting (awards +1 if all spoke, -1 if not)</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+S</kbd> - Exit meeting mode and reset</p>
                        <p className="text-muted-foreground text-xs mt-1">In meeting mode, j/k auto-scores based on popcorn success. Timer tracks meeting duration.</p>
                      </div>
