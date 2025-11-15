@@ -314,27 +314,40 @@ const Leaderboard = () => {
         }
       } else if (e.key === "e" && mode === "meeting") {
         e.preventDefault();
-        // Check if all participants have spoken
-        const allSpoken = participants.every((p) => p.hasSpoken);
-        
-        if (allSpoken) {
-          // Success - award point to current participant, exit meeting mode
-          setParticipants((prev) =>
-            prev.map((p, i) => ({
+        // Mark current participant as having spoken first
+        setParticipants((prev) => {
+          const updated = prev.map((p, i) => 
+            i === focusedIndex ? { ...p, hasSpoken: true } : p
+          );
+          
+          // Check if all participants have now spoken
+          const allSpoken = updated.every((p) => p.hasSpoken);
+          
+          if (allSpoken) {
+            // Success - award point to current participant, exit meeting mode
+            return updated.map((p, i) => ({
               ...p,
               score: i === focusedIndex ? p.score + 1 : p.score,
               hasSpoken: false
-            }))
-          );
+            }));
+          } else {
+            // Failure - not everyone has spoken, apply penalty, revert hasSpoken
+            triggerError(prev[focusedIndex].id);
+            return prev.map((p, i) => 
+              i === focusedIndex ? { ...p, score: p.score - 1 } : p
+            );
+          }
+        });
+        
+        // Check again to determine if we should exit meeting mode
+        const allSpokenCheck = participants.every((p, i) => 
+          i === focusedIndex ? true : p.hasSpoken
+        );
+        
+        if (allSpokenCheck) {
           setMode("normal");
           setMeetingTime(0);
           playSound(1000, 150); // High success sound
-        } else {
-          // Failure - not everyone has spoken, apply penalty
-          setParticipants((prev) =>
-            prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
-          );
-          triggerError(participants[focusedIndex].id);
         }
       } else if (e.key === "j") {
         e.preventDefault();
