@@ -34,6 +34,7 @@ const Leaderboard = () => {
   ]);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [mode, setMode] = useState<Mode>("normal");
+  const [previousMode, setPreviousMode] = useState<Mode>("normal");
   const [editValue, setEditValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +79,7 @@ const Leaderboard = () => {
       if (mode === "search") {
         if (e.key === "Escape") {
           e.preventDefault();
-          setMode("normal");
+          setMode(previousMode);
           setSearchQuery("");
         } else if (e.key === "Enter") {
           e.preventDefault();
@@ -86,9 +87,30 @@ const Leaderboard = () => {
             p.name.toLowerCase().includes(searchQuery.toLowerCase())
           );
           if (matchIndex !== -1) {
+            // Apply meeting mode logic if we were in meeting mode
+            if (previousMode === "meeting") {
+              const targetParticipant = participants[matchIndex];
+              if (targetParticipant.hasSpoken) {
+                // Failed selection - penalty
+                setParticipants((prev) =>
+                  prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
+                );
+                playSound(200, 200); // Low error sound
+              } else {
+                // Successful selection - mark current as spoken and reward
+                setParticipants((prev) =>
+                  prev.map((p, i) => 
+                    i === focusedIndex 
+                      ? { ...p, hasSpoken: true, score: p.score + 1 }
+                      : p
+                  )
+                );
+                playSound(800, 100); // High success sound
+              }
+            }
             setFocusedIndex(matchIndex);
           }
-          setMode("normal");
+          setMode(previousMode);
           setSearchQuery("");
         } else if (e.key === "Backspace") {
           e.preventDefault();
@@ -103,6 +125,7 @@ const Leaderboard = () => {
       // Normal mode commands
       if (e.key === "/") {
         e.preventDefault();
+        setPreviousMode(mode);
         setMode("search");
         setSearchQuery("");
       } else if (e.key === "i") {
