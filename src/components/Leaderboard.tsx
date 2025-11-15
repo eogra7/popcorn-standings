@@ -63,19 +63,31 @@ const Leaderboard = () => {
   const playBuzzer = () => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
+    const lfo = audioContext.createOscillator();
+    const lfoGain = audioContext.createGain();
     const gainNode = audioContext.createGain();
     
+    // LFO setup for frequency modulation
+    lfo.frequency.value = 8; // 8 Hz modulation
+    lfoGain.gain.value = 30; // Modulation depth
+    
+    lfo.connect(lfoGain);
+    lfoGain.connect(oscillator.frequency);
+    
+    // Main oscillator
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    oscillator.frequency.value = 200;
-    oscillator.type = 'sawtooth';
+    oscillator.frequency.value = 180; // Base frequency
+    oscillator.type = 'square';
     
     gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.8);
     
+    lfo.start(audioContext.currentTime);
     oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.4);
+    lfo.stop(audioContext.currentTime + 0.8);
+    oscillator.stop(audioContext.currentTime + 0.8);
   };
 
   const triggerError = (participantId: string) => {
