@@ -38,8 +38,11 @@ const Leaderboard = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [errorParticipantId, setErrorParticipantId] = useState<string | null>(null);
+  const [meetingTime, setMeetingTime] = useState(0);
+  const [isRevealingStatus, setIsRevealingStatus] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
@@ -96,8 +99,33 @@ const Leaderboard = () => {
     setTimeout(() => setErrorParticipantId(null), 600);
   };
 
+  // Timer effect for meeting mode
+  useEffect(() => {
+    if (mode === "meeting") {
+      timerIntervalRef.current = setInterval(() => {
+        setMeetingTime((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [mode]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Handle 'r' key for revealing status
+      if (e.key === "r" && !isRevealingStatus && mode === "meeting") {
+        setIsRevealingStatus(true);
+        return;
+      }
       // Handle search overlay (doesn't change mode)
       if (isSearching) {
         if (e.key === "Escape") {
@@ -189,8 +217,15 @@ const Leaderboard = () => {
         playSound(500, 50);
       } else if (e.ctrlKey && e.key === "s") {
         e.preventDefault();
-        setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
-        playSound(700, 100);
+        if (mode === "meeting") {
+          setMode("normal");
+          setMeetingTime(0);
+          setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
+          playSound(700, 100);
+        } else {
+          setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
+          playSound(700, 100);
+        }
       } else if (e.key === "j") {
         e.preventDefault();
         const nextIndex = (focusedIndex + 1) % participants.length;
@@ -268,9 +303,19 @@ const Leaderboard = () => {
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "r" && isRevealingStatus) {
+        setIsRevealingStatus(false);
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery]);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery, isRevealingStatus]);
 
   // Calculate angle for arrow rotation to point at focused participant
   const angleToFocused = participants.length > 0 
@@ -281,6 +326,12 @@ const Leaderboard = () => {
   const matchesSearch = (name: string) => {
     if (!isSearching || !searchQuery) return false;
     return name.toLowerCase().includes(searchQuery.toLowerCase());
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -296,6 +347,13 @@ const Leaderboard = () => {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            {mode === "meeting" && (
+              <div className="flex items-center gap-2 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-2">
+                <span className="font-mono text-lg font-bold text-orange-500">
+                  {formatTime(meetingTime)}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2">
               <div className={`h-2 w-2 rounded-full animate-pulse ${
                 mode === "meeting" ? "bg-orange-500" : "bg-primary"
@@ -327,14 +385,15 @@ const Leaderboard = () => {
                     </div>
                   </div>
                   <div>
-                    <h3 className="mb-2 font-semibold">Meeting Mode</h3>
-                    <div className="space-y-1 text-sm">
-                      <p><kbd className="rounded bg-muted px-2 py-1">m</kbd> - Toggle meeting mode</p>
-                      <p><kbd className="rounded bg-muted px-2 py-1">s</kbd> - Toggle speaking status</p>
-                      <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+S</kbd> - Reset all speaking status</p>
-                      <p className="text-muted-foreground text-xs mt-1">In meeting mode, j/k auto-scores based on popcorn success</p>
-                    </div>
-                  </div>
+                     <h3 className="mb-2 font-semibold">Meeting Mode</h3>
+                     <div className="space-y-1 text-sm">
+                       <p><kbd className="rounded bg-muted px-2 py-1">m</kbd> - Toggle meeting mode</p>
+                       <p><kbd className="rounded bg-muted px-2 py-1">r</kbd> - Hold to reveal speaking status</p>
+                       <p><kbd className="rounded bg-muted px-2 py-1">s</kbd> - Toggle speaking status</p>
+                       <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+S</kbd> - Exit meeting mode and reset</p>
+                       <p className="text-muted-foreground text-xs mt-1">In meeting mode, j/k auto-scores based on popcorn success. Timer tracks meeting duration.</p>
+                     </div>
+                   </div>
                   <div>
                     <h3 className="mb-2 font-semibold">Editing</h3>
                     <div className="space-y-1 text-sm">
@@ -412,8 +471,10 @@ const Leaderboard = () => {
                         >
                           {getInitials(participant.name)}
                         </div>
-                        {participant.hasSpoken && (
-                          <div className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-green-500 border-2 border-background flex items-center justify-center">
+                        {participant.hasSpoken && (mode !== "meeting" || isRevealingStatus) && (
+                          <div className={`absolute -top-2 -right-2 h-6 w-6 rounded-full bg-green-500 border-2 border-background flex items-center justify-center transition-opacity duration-200 ${
+                            mode === "meeting" && !isRevealingStatus ? "opacity-0" : "opacity-100"
+                          }`}>
                             <span className="text-xs text-white font-bold">✓</span>
                           </div>
                         )}
