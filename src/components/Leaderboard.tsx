@@ -37,6 +37,7 @@ const Leaderboard = () => {
   const [previousMode, setPreviousMode] = useState<Mode>("normal");
   const [editValue, setEditValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [errorParticipantId, setErrorParticipantId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Audio feedback
@@ -56,6 +57,30 @@ const Leaderboard = () => {
     
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + duration / 1000);
+  };
+
+  const playBuzzer = () => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = 200;
+    oscillator.type = 'sawtooth';
+    
+    gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.4);
+  };
+
+  const triggerError = (participantId: string) => {
+    setErrorParticipantId(participantId);
+    playBuzzer();
+    setTimeout(() => setErrorParticipantId(null), 600);
   };
 
   useEffect(() => {
@@ -95,7 +120,7 @@ const Leaderboard = () => {
                 setParticipants((prev) =>
                   prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
                 );
-                playSound(200, 200); // Low error sound
+                triggerError(participants[focusedIndex].id);
               } else {
                 // Successful selection - mark current as spoken and reward
                 setParticipants((prev) =>
@@ -166,7 +191,7 @@ const Leaderboard = () => {
             setParticipants((prev) =>
               prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
             );
-            playSound(200, 200); // Low error sound
+            triggerError(participants[focusedIndex].id);
           } else {
             // Successful selection - mark current as spoken and reward
             setParticipants((prev) =>
@@ -194,7 +219,7 @@ const Leaderboard = () => {
             setParticipants((prev) =>
               prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
             );
-            playSound(200, 200); // Low error sound
+            triggerError(participants[focusedIndex].id);
           } else {
             // Successful selection - mark current as spoken and reward
             setParticipants((prev) =>
@@ -342,6 +367,7 @@ const Leaderboard = () => {
                 const y = 50 + radius * Math.sin(angle);
                 const isFocused = index === focusedIndex;
                 const isEditing = isFocused && mode === "insert";
+                const hasError = errorParticipantId === participant.id;
 
                 return (
                   <div
@@ -352,7 +378,7 @@ const Leaderboard = () => {
                     <div
                       className={`flex flex-col items-center gap-2 transition-all ${
                         isFocused ? "scale-110" : ""
-                      }`}
+                      } ${hasError ? "animate-shake" : ""}`}
                     >
                       <div className="relative">
                         <div
@@ -362,7 +388,7 @@ const Leaderboard = () => {
                               : "bg-card border-2 border-border text-card-foreground"
                           } ${
                             participant.hasSpoken ? "opacity-50" : ""
-                          }`}
+                          } ${hasError ? "animate-flash-red" : ""}`}
                         >
                           {getInitials(participant.name)}
                         </div>
@@ -410,8 +436,11 @@ const Leaderboard = () => {
               {/* Center arrow */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <div
-                  className="transition-transform duration-500 ease-out"
-                  style={{ transform: `rotate(${angleToFocused}deg)` }}
+                  className={`transition-transform duration-500 ease-out ${errorParticipantId ? "animate-arrow-bounce" : ""}`}
+                  style={{ 
+                    transform: `rotate(${angleToFocused}deg)`,
+                    '--arrow-angle': `${angleToFocused}deg`
+                  } as React.CSSProperties}
                 >
                   <ArrowUp className="h-32 w-32 text-orange-500 drop-shadow-lg" strokeWidth={2.5} />
                 </div>

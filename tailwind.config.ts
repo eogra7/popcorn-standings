@@ -86,10 +86,27 @@ export default {
             height: "0",
           },
         },
+        "shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "10%, 30%, 50%, 70%, 90%": { transform: "translateX(-8px)" },
+          "20%, 40%, 60%, 80%": { transform: "translateX(8px)" },
+        },
+        "flash-red": {
+          "0%, 100%": { backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))" },
+          "50%": { backgroundColor: "hsl(var(--destructive) / 0.2)", borderColor: "hsl(var(--destructive))" },
+        },
+        "arrow-bounce": {
+          "0%, 100%": { transform: "rotate(var(--arrow-angle)) translateY(0)" },
+          "25%": { transform: "rotate(calc(var(--arrow-angle) - 15deg)) translateY(-5px)" },
+          "75%": { transform: "rotate(calc(var(--arrow-angle) + 15deg)) translateY(-5px)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "shake": "shake 0.5s ease-in-out",
+        "flash-red": "flash-red 0.5s ease-in-out",
+        "arrow-bounce": "arrow-bounce 0.6s ease-in-out",
       },
     },
   },
