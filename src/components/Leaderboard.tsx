@@ -21,15 +21,16 @@ type Participant = {
   id: string;
   name: string;
   score: number;
+  hasSpoken: boolean;
 };
 
-type Mode = "normal" | "insert" | "search";
+type Mode = "normal" | "insert" | "search" | "meeting";
 
 const Leaderboard = () => {
   const [participants, setParticipants] = useState<Participant[]>([
-    { id: "1", name: "Alice", score: 0 },
-    { id: "2", name: "Bob", score: 0 },
-    { id: "3", name: "Charlie", score: 0 },
+    { id: "1", name: "Alice", score: 0, hasSpoken: false },
+    { id: "2", name: "Bob", score: 0, hasSpoken: false },
+    { id: "3", name: "Charlie", score: 0, hasSpoken: false },
   ]);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [mode, setMode] = useState<Mode>("normal");
@@ -112,19 +113,81 @@ const Leaderboard = () => {
       } else if (e.key === "o") {
         e.preventDefault();
         const newId = Date.now().toString();
-        setParticipants((prev) => [...prev, { id: newId, name: "", score: 0 }]);
+        setParticipants((prev) => [...prev, { id: newId, name: "", score: 0, hasSpoken: false }]);
         setFocusedIndex(participants.length);
         setMode("insert");
         setEditValue("");
         setTimeout(() => inputRef.current?.focus(), 0);
+      } else if (e.key === "m") {
+        e.preventDefault();
+        setMode((prev) => prev === "meeting" ? "normal" : "meeting");
+        playSound(mode === "meeting" ? 400 : 800, 100);
+      } else if (e.key === "s" && !e.ctrlKey) {
+        e.preventDefault();
+        setParticipants((prev) =>
+          prev.map((p, i) => (i === focusedIndex ? { ...p, hasSpoken: !p.hasSpoken } : p))
+        );
+        playSound(500, 50);
+      } else if (e.ctrlKey && e.key === "s") {
+        e.preventDefault();
+        setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
+        playSound(700, 100);
       } else if (e.key === "j") {
         e.preventDefault();
-        setFocusedIndex((prev) => (prev + 1) % participants.length);
-        playSound(400, 30);
+        const nextIndex = (focusedIndex + 1) % participants.length;
+        
+        if (mode === "meeting") {
+          const targetParticipant = participants[nextIndex];
+          if (targetParticipant.hasSpoken) {
+            // Failed selection - penalty
+            setParticipants((prev) =>
+              prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
+            );
+            playSound(200, 200); // Low error sound
+          } else {
+            // Successful selection - mark current as spoken and reward
+            setParticipants((prev) =>
+              prev.map((p, i) => 
+                i === focusedIndex 
+                  ? { ...p, hasSpoken: true, score: p.score + 1 }
+                  : p
+              )
+            );
+            setFocusedIndex(nextIndex);
+            playSound(800, 100); // High success sound
+          }
+        } else {
+          setFocusedIndex(nextIndex);
+          playSound(400, 30);
+        }
       } else if (e.key === "k") {
         e.preventDefault();
-        setFocusedIndex((prev) => (prev - 1 + participants.length) % participants.length);
-        playSound(400, 30);
+        const prevIndex = (focusedIndex - 1 + participants.length) % participants.length;
+        
+        if (mode === "meeting") {
+          const targetParticipant = participants[prevIndex];
+          if (targetParticipant.hasSpoken) {
+            // Failed selection - penalty
+            setParticipants((prev) =>
+              prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
+            );
+            playSound(200, 200); // Low error sound
+          } else {
+            // Successful selection - mark current as spoken and reward
+            setParticipants((prev) =>
+              prev.map((p, i) => 
+                i === focusedIndex 
+                  ? { ...p, hasSpoken: true, score: p.score + 1 }
+                  : p
+              )
+            );
+            setFocusedIndex(prevIndex);
+            playSound(800, 100); // High success sound
+          }
+        } else {
+          setFocusedIndex(prevIndex);
+          playSound(400, 30);
+        }
       } else if (e.ctrlKey && e.key === "d") {
         e.preventDefault();
         if (participants.length > 1) {
@@ -169,9 +232,11 @@ const Leaderboard = () => {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2">
-              <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+              <div className={`h-2 w-2 rounded-full animate-pulse ${
+                mode === "meeting" ? "bg-orange-500" : "bg-primary"
+              }`} />
               <span className="font-mono text-sm font-medium text-card-foreground">
-                {mode === "normal" ? "NORMAL" : mode === "insert" ? "INSERT" : "SEARCH"}
+                {mode === "normal" ? "NORMAL" : mode === "insert" ? "INSERT" : mode === "search" ? "SEARCH" : "MEETING"}
               </span>
             </div>
             <Dialog>
@@ -194,6 +259,15 @@ const Leaderboard = () => {
                       <p><kbd className="rounded bg-muted px-2 py-1">j</kbd> - Move down</p>
                       <p><kbd className="rounded bg-muted px-2 py-1">k</kbd> - Move up</p>
                       <p><kbd className="rounded bg-muted px-2 py-1">/pattern</kbd> - Search and jump to participant</p>
+                    </div>
+                  </div>
+                  <div>
+                    <h3 className="mb-2 font-semibold">Meeting Mode</h3>
+                    <div className="space-y-1 text-sm">
+                      <p><kbd className="rounded bg-muted px-2 py-1">m</kbd> - Toggle meeting mode</p>
+                      <p><kbd className="rounded bg-muted px-2 py-1">s</kbd> - Toggle speaking status</p>
+                      <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+S</kbd> - Reset all speaking status</p>
+                      <p className="text-muted-foreground text-xs mt-1">In meeting mode, j/k auto-scores based on popcorn success</p>
                     </div>
                   </div>
                   <div>
@@ -257,14 +331,23 @@ const Leaderboard = () => {
                         isFocused ? "scale-110" : ""
                       }`}
                     >
-                      <div
-                        className={`flex h-24 w-24 items-center justify-center rounded-lg text-3xl font-bold transition-all ${
-                          isFocused
-                            ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-[var(--shadow-focus)] ring-4 ring-primary/50"
-                            : "bg-card border-2 border-border text-card-foreground"
-                        }`}
-                      >
-                        {getInitials(participant.name)}
+                      <div className="relative">
+                        <div
+                          className={`flex h-24 w-24 items-center justify-center rounded-lg text-3xl font-bold transition-all ${
+                            isFocused
+                              ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-[var(--shadow-focus)] ring-4 ring-primary/50"
+                              : "bg-card border-2 border-border text-card-foreground"
+                          } ${
+                            participant.hasSpoken ? "opacity-50" : ""
+                          }`}
+                        >
+                          {getInitials(participant.name)}
+                        </div>
+                        {participant.hasSpoken && (
+                          <div className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-green-500 border-2 border-background flex items-center justify-center">
+                            <span className="text-xs text-white font-bold">✓</span>
+                          </div>
+                        )}
                       </div>
                       
                       {isEditing ? (
