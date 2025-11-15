@@ -116,7 +116,7 @@ const Leaderboard = () => {
             if (previousMode === "meeting") {
               const targetParticipant = participants[matchIndex];
               if (targetParticipant.hasSpoken) {
-                // Failed selection - penalty
+                // Failed selection - penalty, don't move focus
                 setParticipants((prev) =>
                   prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
                 );
@@ -130,10 +130,13 @@ const Leaderboard = () => {
                       : p
                   )
                 );
+                setFocusedIndex(matchIndex);
                 playSound(800, 100); // High success sound
               }
+            } else {
+              // Normal mode - always move focus
+              setFocusedIndex(matchIndex);
             }
-            setFocusedIndex(matchIndex);
           }
           setMode(previousMode);
           setSearchQuery("");
