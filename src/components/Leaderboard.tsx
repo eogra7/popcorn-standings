@@ -24,7 +24,7 @@ type Participant = {
   hasSpoken: boolean;
 };
 
-type Mode = "normal" | "insert" | "search" | "meeting";
+type Mode = "normal" | "insert" | "meeting";
 
 const Leaderboard = () => {
   const [participants, setParticipants] = useState<Participant[]>([
@@ -34,11 +34,12 @@ const Leaderboard = () => {
   ]);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [mode, setMode] = useState<Mode>("normal");
-  const [previousMode, setPreviousMode] = useState<Mode>("normal");
   const [editValue, setEditValue] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [errorParticipantId, setErrorParticipantId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
@@ -85,26 +86,11 @@ const Leaderboard = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (mode === "insert") {
+      // Handle search overlay (doesn't change mode)
+      if (isSearching) {
         if (e.key === "Escape") {
           e.preventDefault();
-          if (editValue.trim()) {
-            setParticipants((prev) =>
-              prev.map((p, i) =>
-                i === focusedIndex ? { ...p, name: editValue.trim() } : p
-              )
-            );
-          }
-          setMode("normal");
-          setEditValue("");
-        }
-        return;
-      }
-
-      if (mode === "search") {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          setMode(previousMode);
+          setIsSearching(false);
           setSearchQuery("");
         } else if (e.key === "Enter") {
           e.preventDefault();
@@ -112,8 +98,8 @@ const Leaderboard = () => {
             p.name.toLowerCase().includes(searchQuery.toLowerCase())
           );
           if (matchIndex !== -1) {
-            // Apply meeting mode logic if we were in meeting mode
-            if (previousMode === "meeting") {
+            // Apply meeting mode logic if in meeting mode
+            if (mode === "meeting") {
               const targetParticipant = participants[matchIndex];
               if (targetParticipant.hasSpoken) {
                 // Failed selection - penalty, don't move focus
@@ -138,24 +124,34 @@ const Leaderboard = () => {
               setFocusedIndex(matchIndex);
             }
           }
-          setMode(previousMode);
+          setIsSearching(false);
           setSearchQuery("");
-        } else if (e.key === "Backspace") {
+        }
+        return; // Don't process other keys when searching
+      }
+
+      if (mode === "insert") {
+        if (e.key === "Escape") {
           e.preventDefault();
-          setSearchQuery((prev) => prev.slice(0, -1));
-        } else if (e.key.length === 1) {
-          e.preventDefault();
-          setSearchQuery((prev) => prev + e.key);
+          if (editValue.trim()) {
+            setParticipants((prev) =>
+              prev.map((p, i) =>
+                i === focusedIndex ? { ...p, name: editValue.trim() } : p
+              )
+            );
+          }
+          setMode("normal");
+          setEditValue("");
         }
         return;
       }
 
-      // Normal mode commands
+      // Normal and meeting mode commands
       if (e.key === "/") {
         e.preventDefault();
-        setPreviousMode(mode);
-        setMode("search");
+        setIsSearching(true);
         setSearchQuery("");
+        setTimeout(() => searchInputRef.current?.focus(), 0);
       } else if (e.key === "i") {
         e.preventDefault();
         setMode("insert");
@@ -262,12 +258,18 @@ const Leaderboard = () => {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode, focusedIndex, participants, editValue, searchQuery]);
+  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery]);
 
   // Calculate angle for arrow rotation to point at focused participant
   const angleToFocused = participants.length > 0 
     ? (focusedIndex / participants.length) * 360 
     : 0;
+
+  // Filter participants based on search query
+  const matchesSearch = (name: string) => {
+    if (!isSearching || !searchQuery) return false;
+    return name.toLowerCase().includes(searchQuery.toLowerCase());
+  };
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -287,7 +289,7 @@ const Leaderboard = () => {
                 mode === "meeting" ? "bg-orange-500" : "bg-primary"
               }`} />
               <span className="font-mono text-sm font-medium text-card-foreground">
-                {mode === "normal" ? "NORMAL" : mode === "insert" ? "INSERT" : mode === "search" ? "SEARCH" : "MEETING"}
+                {mode === "normal" ? "NORMAL" : mode === "insert" ? "INSERT" : "MEETING"}
               </span>
             </div>
             <Dialog>
@@ -371,6 +373,7 @@ const Leaderboard = () => {
                 const isFocused = index === focusedIndex;
                 const isEditing = isFocused && mode === "insert";
                 const hasError = errorParticipantId === participant.id;
+                const isSearchMatch = matchesSearch(participant.name);
 
                 return (
                   <div
@@ -388,6 +391,8 @@ const Leaderboard = () => {
                           className={`flex h-24 w-24 items-center justify-center rounded-lg text-3xl font-bold transition-all ${
                             isFocused
                               ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-[var(--shadow-focus)] ring-4 ring-primary/50"
+                              : isSearchMatch
+                              ? "bg-accent/50 border-2 border-accent text-accent-foreground ring-2 ring-accent/30"
                               : "bg-card border-2 border-border text-card-foreground"
                           } ${
                             participant.hasSpoken ? "opacity-50" : ""
@@ -453,19 +458,44 @@ const Leaderboard = () => {
         </div>
 
         <div className="mt-6 flex flex-col items-center gap-2">
-          {mode === "search" && (
-            <div className="rounded-lg border-2 border-primary bg-card px-4 py-2 font-mono text-foreground">
-              /{searchQuery}
-            </div>
-          )}
           <div className="flex justify-center gap-4 text-sm text-muted-foreground">
             <span>Press <kbd className="rounded bg-muted px-2 py-1">j/k</kbd> to navigate</span>
             <span>•</span>
             <span>Press <kbd className="rounded bg-muted px-2 py-1">/</kbd> to search</span>
             <span>•</span>
-            <span>Press <kbd className="rounded bg-muted px-2 py-1">A/X</kbd> to score</span>
+            <span>Press <kbd className="rounded bg-muted px-2 py-1">a/x</kbd> to score</span>
           </div>
         </div>
+
+        {/* Search overlay */}
+        {isSearching && (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-end justify-center pb-16 z-50">
+            <div className="w-full max-w-md animate-in slide-in-from-bottom-4 duration-200">
+              <div className="rounded-lg border-2 border-primary bg-card px-6 py-4 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-primary font-mono text-lg">/</span>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="flex-1 bg-transparent border-none outline-none text-foreground font-mono text-lg placeholder:text-muted-foreground"
+                    placeholder="Search participant..."
+                    autoFocus
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    ESC to cancel
+                  </span>
+                </div>
+                {searchQuery && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    {participants.filter(p => matchesSearch(p.name)).length} match(es) found
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
