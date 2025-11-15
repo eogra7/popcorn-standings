@@ -24,6 +24,13 @@ type Participant = {
   hasSpoken: boolean;
 };
 
+type ParticipantStats = {
+  id: string;
+  name: string;
+  score: number;
+  speakingTime: number;
+};
+
 type Mode = "normal" | "insert" | "meeting";
 
 const Leaderboard = () => {
@@ -42,11 +49,19 @@ const Leaderboard = () => {
   const [isRevealingStatus, setIsRevealingStatus] = useState(false);
   const [speakingStartTime, setSpeakingStartTime] = useState<number | null>(null);
   const [speakingDuration, setSpeakingDuration] = useState(0);
+  const [participantSpeakingTimes, setParticipantSpeakingTimes] = useState<Record<string, number>>({});
+  const [showMeetingSummary, setShowMeetingSummary] = useState(false);
+  const [meetingSummaryData, setMeetingSummaryData] = useState<{
+    stats: ParticipantStats[];
+    totalTime: number;
+  } | null>(null);
+  const [summaryCloseTimer, setSummaryCloseTimer] = useState(10);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const speakingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const tickTockIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const summaryTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
@@ -144,6 +159,15 @@ const Leaderboard = () => {
   // Speaking timer effect for meeting mode
   useEffect(() => {
     if (mode === "meeting" && focusedIndex >= 0) {
+      // Save speaking time for previous participant
+      if (speakingStartTime !== null && participants[focusedIndex]) {
+        const prevParticipantId = participants[focusedIndex].id;
+        setParticipantSpeakingTimes((prev) => ({
+          ...prev,
+          [prevParticipantId]: (prev[prevParticipantId] || 0) + speakingDuration,
+        }));
+      }
+      
       // Start tracking speaking time when focused participant changes
       setSpeakingStartTime(Date.now());
       setSpeakingDuration(0);
@@ -158,6 +182,15 @@ const Leaderboard = () => {
         tickTockIntervalRef.current = null;
       }
     } else {
+      // Save final speaking time when exiting meeting mode
+      if (mode !== "meeting" && speakingStartTime !== null && participants[focusedIndex]) {
+        const currentParticipantId = participants[focusedIndex].id;
+        setParticipantSpeakingTimes((prev) => ({
+          ...prev,
+          [currentParticipantId]: (prev[currentParticipantId] || 0) + speakingDuration,
+        }));
+      }
+      
       setSpeakingStartTime(null);
       setSpeakingDuration(0);
       if (speakingTimerRef.current) {
@@ -205,8 +238,50 @@ const Leaderboard = () => {
     };
   }, [mode, speakingDuration]);
 
+  // Meeting summary auto-close timer
+  useEffect(() => {
+    if (showMeetingSummary) {
+      setSummaryCloseTimer(10);
+      summaryTimerRef.current = setInterval(() => {
+        setSummaryCloseTimer((prev) => {
+          if (prev <= 1) {
+            setShowMeetingSummary(false);
+            if (summaryTimerRef.current) {
+              clearInterval(summaryTimerRef.current);
+            }
+            return 10;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (summaryTimerRef.current) {
+        clearInterval(summaryTimerRef.current);
+        summaryTimerRef.current = null;
+      }
+    }
+
+    return () => {
+      if (summaryTimerRef.current) {
+        clearInterval(summaryTimerRef.current);
+      }
+    };
+  }, [showMeetingSummary]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Close meeting summary with 'q'
+      if (showMeetingSummary && e.key === "q") {
+        e.preventDefault();
+        setShowMeetingSummary(false);
+        return;
+      }
+
+      // Don't process other keys if summary is showing
+      if (showMeetingSummary) {
+        return;
+      }
+
       // Handle 'r' key for revealing status
       if (e.key === "r" && !isRevealingStatus && mode === "meeting") {
         setIsRevealingStatus(true);
@@ -306,6 +381,7 @@ const Leaderboard = () => {
         if (mode === "meeting") {
           setMode("normal");
           setMeetingTime(0);
+          setParticipantSpeakingTimes({});
           setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
           playSound(700, 100);
         } else {
@@ -314,6 +390,14 @@ const Leaderboard = () => {
         }
       } else if (e.key === "e" && mode === "meeting") {
         e.preventDefault();
+        
+        // Save final speaking time for current participant
+        const currentParticipantId = participants[focusedIndex].id;
+        const finalSpeakingTimes = {
+          ...participantSpeakingTimes,
+          [currentParticipantId]: (participantSpeakingTimes[currentParticipantId] || 0) + speakingDuration,
+        };
+        
         // Mark current participant as having spoken first
         setParticipants((prev) => {
           const updated = prev.map((p, i) => 
@@ -324,12 +408,33 @@ const Leaderboard = () => {
           const allSpoken = updated.every((p) => p.hasSpoken);
           
           if (allSpoken) {
-            // Success - award point to current participant, exit meeting mode
-            return updated.map((p, i) => ({
+            // Success - award point to current participant, prepare summary
+            const updatedWithScore = updated.map((p, i) => ({
               ...p,
               score: i === focusedIndex ? p.score + 1 : p.score,
               hasSpoken: false
             }));
+            
+            // Prepare meeting summary data
+            const stats: ParticipantStats[] = updatedWithScore.map((p) => ({
+              id: p.id,
+              name: p.name,
+              score: p.score,
+              speakingTime: finalSpeakingTimes[p.id] || 0,
+            })).sort((a, b) => b.score - a.score);
+            
+            setMeetingSummaryData({
+              stats,
+              totalTime: meetingTime,
+            });
+            
+            setMode("normal");
+            setMeetingTime(0);
+            setParticipantSpeakingTimes({});
+            setShowMeetingSummary(true);
+            playSound(1000, 150); // High success sound
+            
+            return updatedWithScore;
           } else {
             // Failure - not everyone has spoken, apply penalty, revert hasSpoken
             triggerError(prev[focusedIndex].id);
@@ -338,17 +443,6 @@ const Leaderboard = () => {
             );
           }
         });
-        
-        // Check again to determine if we should exit meeting mode
-        const allSpokenCheck = participants.every((p, i) => 
-          i === focusedIndex ? true : p.hasSpoken
-        );
-        
-        if (allSpokenCheck) {
-          setMode("normal");
-          setMeetingTime(0);
-          playSound(1000, 150); // High success sound
-        }
       } else if (e.key === "j") {
         e.preventDefault();
         const nextIndex = (focusedIndex + 1) % participants.length;
@@ -438,7 +532,7 @@ const Leaderboard = () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery, isRevealingStatus]);
+  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery, isRevealingStatus, showMeetingSummary, meetingTime, participantSpeakingTimes, speakingDuration]);
 
   // Calculate angle for arrow rotation to point at focused participant
   const angleToFocused = participants.length > 0 
@@ -698,6 +792,80 @@ const Leaderboard = () => {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Meeting Summary */}
+        {showMeetingSummary && meetingSummaryData && (
+          <div className="fixed inset-0 bg-background/95 backdrop-blur-md flex items-center justify-center z-50 animate-fade-in">
+            <div className="w-full max-w-3xl mx-4 animate-scale-in">
+              <Card className="border-2 border-primary bg-card shadow-2xl overflow-hidden">
+                <div className="p-8">
+                  <div className="text-center mb-6">
+                    <h2 className="text-3xl font-bold text-foreground mb-2">Meeting Summary</h2>
+                    <p className="text-muted-foreground">
+                      Total Duration: {Math.floor(meetingSummaryData.totalTime / 60)}:{(meetingSummaryData.totalTime % 60).toString().padStart(2, "0")}
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 mb-6">
+                    {meetingSummaryData.stats.map((stat, index) => {
+                      const isOvertime = stat.speakingTime > 30;
+                      const maxSpeakingTime = Math.max(...meetingSummaryData.stats.map(s => s.speakingTime));
+                      const barWidth = maxSpeakingTime > 0 ? (stat.speakingTime / maxSpeakingTime) * 100 : 0;
+                      
+                      return (
+                        <div key={stat.id} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className={`text-2xl font-bold ${
+                                index === 0 ? "text-yellow-500" :
+                                index === 1 ? "text-gray-400" :
+                                index === 2 ? "text-orange-600" :
+                                "text-muted-foreground"
+                              }`}>
+                                #{index + 1}
+                              </span>
+                              <div>
+                                <p className="font-semibold text-foreground">{stat.name}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Score: {stat.score} • Speaking: {Math.floor(stat.speakingTime / 60)}:{(stat.speakingTime % 60).toString().padStart(2, "0")}
+                                </p>
+                              </div>
+                            </div>
+                            {isOvertime && (
+                              <span className="text-xs bg-orange-500/20 text-orange-500 px-2 py-1 rounded font-semibold">
+                                Overtime
+                              </span>
+                            )}
+                          </div>
+                          <div className="h-3 bg-muted rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full transition-all duration-1000 ${
+                                isOvertime ? "bg-orange-500" : "bg-primary"
+                              }`}
+                              style={{ width: `${barWidth}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="text-center text-sm text-muted-foreground mb-4">
+                    Press <kbd className="rounded bg-muted px-2 py-1">q</kbd> to close
+                  </div>
+                </div>
+
+                {/* Countdown timer bar */}
+                <div className="h-2 bg-muted relative overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-1000 ease-linear"
+                    style={{ width: `${(summaryCloseTimer / 10) * 100}%` }}
+                  />
+                </div>
+              </Card>
             </div>
           </div>
         )}
