@@ -37,6 +37,25 @@ const Leaderboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Audio feedback
+  const playSound = (frequency: number, duration: number = 50) => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + duration / 1000);
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (mode === "insert") {
@@ -100,26 +119,30 @@ const Leaderboard = () => {
         setTimeout(() => inputRef.current?.focus(), 0);
       } else if (e.key === "j") {
         e.preventDefault();
-        setFocusedIndex((prev) => Math.min(prev + 1, participants.length - 1));
+        setFocusedIndex((prev) => (prev + 1) % participants.length);
+        playSound(400, 30);
       } else if (e.key === "k") {
         e.preventDefault();
-        setFocusedIndex((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === "d") {
+        setFocusedIndex((prev) => (prev - 1 + participants.length) % participants.length);
+        playSound(400, 30);
+      } else if (e.ctrlKey && e.key === "d") {
         e.preventDefault();
         if (participants.length > 1) {
           setParticipants((prev) => prev.filter((_, i) => i !== focusedIndex));
           setFocusedIndex((prev) => Math.min(prev, participants.length - 2));
         }
-      } else if (e.ctrlKey && e.key === "a") {
+      } else if (e.key === "a") {
         e.preventDefault();
         setParticipants((prev) =>
           prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score + 1 } : p))
         );
-      } else if (e.ctrlKey && e.key === "x") {
+        playSound(600, 80);
+      } else if (e.key === "x") {
         e.preventDefault();
         setParticipants((prev) =>
           prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
         );
+        playSound(300, 80);
       }
     };
 
@@ -178,15 +201,15 @@ const Leaderboard = () => {
                     <div className="space-y-1 text-sm">
                       <p><kbd className="rounded bg-muted px-2 py-1">i</kbd> - Edit participant name</p>
                       <p><kbd className="rounded bg-muted px-2 py-1">o</kbd> - Add new participant</p>
-                      <p><kbd className="rounded bg-muted px-2 py-1">d</kbd> - Delete participant</p>
+                      <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+D</kbd> - Delete participant</p>
                       <p><kbd className="rounded bg-muted px-2 py-1">ESC</kbd> - Exit insert mode</p>
                     </div>
                   </div>
                   <div>
                     <h3 className="mb-2 font-semibold">Scoring</h3>
                     <div className="space-y-1 text-sm">
-                      <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+A</kbd> - Add point (+1)</p>
-                      <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+X</kbd> - Remove point (-1)</p>
+                      <p><kbd className="rounded bg-muted px-2 py-1">A</kbd> - Add point (+1)</p>
+                      <p><kbd className="rounded bg-muted px-2 py-1">X</kbd> - Remove point (-1)</p>
                     </div>
                   </div>
                   <div className="rounded-lg bg-muted p-4">
@@ -284,7 +307,7 @@ const Leaderboard = () => {
                   className="transition-transform duration-500 ease-out"
                   style={{ transform: `rotate(${angleToFocused}deg)` }}
                 >
-                  <ArrowUp className="h-16 w-16 text-primary drop-shadow-lg" />
+                  <ArrowUp className="h-32 w-32 text-orange-500 drop-shadow-lg" strokeWidth={2.5} />
                 </div>
               </div>
             </>
@@ -302,7 +325,7 @@ const Leaderboard = () => {
             <span>•</span>
             <span>Press <kbd className="rounded bg-muted px-2 py-1">/</kbd> to search</span>
             <span>•</span>
-            <span>Press <kbd className="rounded bg-muted px-2 py-1">Ctrl+A/X</kbd> to score</span>
+            <span>Press <kbd className="rounded bg-muted px-2 py-1">A/X</kbd> to score</span>
           </div>
         </div>
       </div>
