@@ -23,7 +23,7 @@ type Participant = {
   score: number;
 };
 
-type Mode = "normal" | "insert";
+type Mode = "normal" | "insert" | "search";
 
 const Leaderboard = () => {
   const [participants, setParticipants] = useState<Participant[]>([
@@ -34,6 +34,7 @@ const Leaderboard = () => {
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [mode, setMode] = useState<Mode>("normal");
   const [editValue, setEditValue] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -54,8 +55,37 @@ const Leaderboard = () => {
         return;
       }
 
+      if (mode === "search") {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setMode("normal");
+          setSearchQuery("");
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          const matchIndex = participants.findIndex((p) =>
+            p.name.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+          if (matchIndex !== -1) {
+            setFocusedIndex(matchIndex);
+          }
+          setMode("normal");
+          setSearchQuery("");
+        } else if (e.key === "Backspace") {
+          e.preventDefault();
+          setSearchQuery((prev) => prev.slice(0, -1));
+        } else if (e.key.length === 1) {
+          e.preventDefault();
+          setSearchQuery((prev) => prev + e.key);
+        }
+        return;
+      }
+
       // Normal mode commands
-      if (e.key === "i") {
+      if (e.key === "/") {
+        e.preventDefault();
+        setMode("search");
+        setSearchQuery("");
+      } else if (e.key === "i") {
         e.preventDefault();
         setMode("insert");
         setEditValue(participants[focusedIndex]?.name || "");
@@ -95,7 +125,7 @@ const Leaderboard = () => {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mode, focusedIndex, participants, editValue]);
+  }, [mode, focusedIndex, participants, editValue, searchQuery]);
 
   // Calculate angle for arrow rotation to point at focused participant
   const angleToFocused = participants.length > 0 
@@ -118,7 +148,7 @@ const Leaderboard = () => {
             <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2">
               <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
               <span className="font-mono text-sm font-medium text-card-foreground">
-                {mode === "normal" ? "NORMAL" : "INSERT"}
+                {mode === "normal" ? "NORMAL" : mode === "insert" ? "INSERT" : "SEARCH"}
               </span>
             </div>
             <Dialog>
@@ -140,6 +170,7 @@ const Leaderboard = () => {
                     <div className="space-y-1 text-sm">
                       <p><kbd className="rounded bg-muted px-2 py-1">j</kbd> - Move down</p>
                       <p><kbd className="rounded bg-muted px-2 py-1">k</kbd> - Move up</p>
+                      <p><kbd className="rounded bg-muted px-2 py-1">/pattern</kbd> - Search and jump to participant</p>
                     </div>
                   </div>
                   <div>
@@ -260,12 +291,19 @@ const Leaderboard = () => {
           )}
         </div>
 
-        <div className="mt-6 flex justify-center gap-4 text-sm text-muted-foreground">
-          <span>Press <kbd className="rounded bg-muted px-2 py-1">j/k</kbd> to navigate</span>
-          <span>•</span>
-          <span>Press <kbd className="rounded bg-muted px-2 py-1">i</kbd> to edit</span>
-          <span>•</span>
-          <span>Press <kbd className="rounded bg-muted px-2 py-1">Ctrl+A/X</kbd> to score</span>
+        <div className="mt-6 flex flex-col items-center gap-2">
+          {mode === "search" && (
+            <div className="rounded-lg border-2 border-primary bg-card px-4 py-2 font-mono text-foreground">
+              /{searchQuery}
+            </div>
+          )}
+          <div className="flex justify-center gap-4 text-sm text-muted-foreground">
+            <span>Press <kbd className="rounded bg-muted px-2 py-1">j/k</kbd> to navigate</span>
+            <span>•</span>
+            <span>Press <kbd className="rounded bg-muted px-2 py-1">/</kbd> to search</span>
+            <span>•</span>
+            <span>Press <kbd className="rounded bg-muted px-2 py-1">Ctrl+A/X</kbd> to score</span>
+          </div>
         </div>
       </div>
     </div>
