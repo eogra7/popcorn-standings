@@ -274,9 +274,9 @@ const Leaderboard = () => {
     };
   }, [showMeetingSummary]);
 
-  // Spinning arrow animation when meeting starts
+  // Spinning arrow animation when meeting starts (only for fresh meetings)
   useEffect(() => {
-    if (mode === "meeting" && !isSpinning && participants.length > 0) {
+    if (mode === "meeting" && !isSpinning && meetingTime === 0 && participants.length > 0) {
       setIsSpinning(true);
       
       // Randomly select a participant
