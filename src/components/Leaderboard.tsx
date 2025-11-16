@@ -58,6 +58,8 @@ const Leaderboard = () => {
   const [summaryCloseTimer, setSummaryCloseTimer] = useState(10);
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [endMeetingProgress, setEndMeetingProgress] = useState(0);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [spinRotation, setSpinRotation] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -65,6 +67,7 @@ const Leaderboard = () => {
   const tickTockIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const summaryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const endMeetingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const spinAnimationRef = useRef<number | null>(null);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
@@ -271,6 +274,54 @@ const Leaderboard = () => {
     };
   }, [showMeetingSummary]);
 
+  // Spinning arrow animation when meeting starts
+  useEffect(() => {
+    if (mode === "meeting" && !isSpinning && participants.length > 0) {
+      setIsSpinning(true);
+      
+      // Randomly select a participant
+      const randomIndex = Math.floor(Math.random() * participants.length);
+      
+      // Calculate angle to the random participant
+      const angle = (360 / participants.length) * randomIndex;
+      
+      // Animation parameters
+      const startTime = Date.now();
+      const duration = 3000; // 3 seconds
+      const totalSpins = 5; // Number of full rotations
+      const totalRotation = 360 * totalSpins + angle;
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Ease-out cubic for smooth deceleration
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+        
+        const currentRotation = totalRotation * easeProgress;
+        setSpinRotation(currentRotation);
+        
+        if (progress < 1) {
+          spinAnimationRef.current = requestAnimationFrame(animate);
+        } else {
+          // Animation complete - set the focused index
+          setFocusedIndex(randomIndex);
+          setIsSpinning(false);
+          setSpinRotation(0);
+          playSound(900, 150);
+        }
+      };
+      
+      animate();
+      
+      return () => {
+        if (spinAnimationRef.current) {
+          cancelAnimationFrame(spinAnimationRef.current);
+        }
+      };
+    }
+  }, [mode, participants.length]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Close meeting summary with 'q'
@@ -449,8 +500,15 @@ const Leaderboard = () => {
         setTimeout(() => inputRef.current?.focus(), 0);
       } else if (e.key === "m") {
         e.preventDefault();
-        setMode((prev) => prev === "meeting" ? "normal" : "meeting");
-        playSound(mode === "meeting" ? 400 : 800, 100);
+        if (mode === "meeting") {
+          setMode("normal");
+          setIsSpinning(false);
+          setSpinRotation(0);
+          playSound(400, 100);
+        } else {
+          setMode("meeting");
+          playSound(800, 100);
+        }
       } else if (e.key === "s" && !e.ctrlKey) {
         e.preventDefault();
         setParticipants((prev) =>
@@ -779,9 +837,9 @@ const Leaderboard = () => {
               {/* Center arrow */}
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <div
-                  className={`transition-transform duration-500 ease-out ${errorParticipantId ? "animate-arrow-bounce" : ""}`}
+                  className={`${isSpinning ? "" : "transition-transform duration-500 ease-out"} ${errorParticipantId ? "animate-arrow-bounce" : ""}`}
                   style={{ 
-                    transform: `rotate(${angleToFocused}deg)`,
+                    transform: `rotate(${isSpinning ? spinRotation : angleToFocused}deg)`,
                     '--arrow-angle': `${angleToFocused}deg`
                   } as React.CSSProperties}
                 >
