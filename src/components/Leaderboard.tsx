@@ -34,11 +34,24 @@ type ParticipantStats = {
 type Mode = "normal" | "insert" | "meeting";
 
 const Leaderboard = () => {
-  const [participants, setParticipants] = useState<Participant[]>([
-    { id: "1", name: "Alice", score: 0, hasSpoken: false },
-    { id: "2", name: "Bob", score: 0, hasSpoken: false },
-    { id: "3", name: "Charlie", score: 0, hasSpoken: false },
-  ]);
+  // Load from localStorage or use defaults
+  const loadParticipants = (): Participant[] => {
+    try {
+      const saved = localStorage.getItem('leaderboard-participants');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (error) {
+      console.error('Failed to load participants from localStorage:', error);
+    }
+    return [
+      { id: "1", name: "Alice", score: 0, hasSpoken: false },
+      { id: "2", name: "Bob", score: 0, hasSpoken: false },
+      { id: "3", name: "Charlie", score: 0, hasSpoken: false },
+    ];
+  };
+
+  const [participants, setParticipants] = useState<Participant[]>(loadParticipants);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [mode, setMode] = useState<Mode>("normal");
   const [editValue, setEditValue] = useState("");
@@ -49,7 +62,14 @@ const Leaderboard = () => {
   const [isRevealingStatus, setIsRevealingStatus] = useState(false);
   const [speakingStartTime, setSpeakingStartTime] = useState<number | null>(null);
   const [speakingDuration, setSpeakingDuration] = useState(0);
-  const [participantSpeakingTimes, setParticipantSpeakingTimes] = useState<Record<string, number>>({});
+  const [participantSpeakingTimes, setParticipantSpeakingTimes] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('leaderboard-speaking-times');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [showMeetingSummary, setShowMeetingSummary] = useState(false);
   const [meetingSummaryData, setMeetingSummaryData] = useState<{
     stats: ParticipantStats[];
@@ -68,6 +88,24 @@ const Leaderboard = () => {
   const summaryTimerRef = useRef<NodeJS.Timeout | null>(null);
   const endMeetingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const spinAnimationRef = useRef<number | null>(null);
+
+  // Persist participants to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('leaderboard-participants', JSON.stringify(participants));
+    } catch (error) {
+      console.error('Failed to save participants to localStorage:', error);
+    }
+  }, [participants]);
+
+  // Persist speaking times to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('leaderboard-speaking-times', JSON.stringify(participantSpeakingTimes));
+    } catch (error) {
+      console.error('Failed to save speaking times to localStorage:', error);
+    }
+  }, [participantSpeakingTimes]);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
