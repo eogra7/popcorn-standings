@@ -921,19 +921,21 @@ const Leaderboard = () => {
                           <p className="text-sm font-semibold text-foreground max-w-32 truncate">
                             {participant.name || "(unnamed)"}
                           </p>
-                          <div
-                            className={`mt-1 inline-flex items-center gap-1 rounded px-2 py-0.5 text-sm font-bold ${
-                              participant.score > 0
-                                ? "bg-success/10 text-success"
-                                : participant.score < 0
-                                ? "bg-destructive/10 text-destructive"
-                                : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {participant.score > 0 && <Plus className="h-3 w-3" />}
-                            {participant.score < 0 && <Minus className="h-3 w-3" />}
-                            {participant.score}
-                          </div>
+                          {mode !== "meeting" && (
+                            <div
+                              className={`mt-1 inline-flex items-center gap-1 rounded px-2 py-0.5 text-sm font-bold ${
+                                participant.score > 0
+                                  ? "bg-success/10 text-success"
+                                  : participant.score < 0
+                                  ? "bg-destructive/10 text-destructive"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {participant.score > 0 && <Plus className="h-3 w-3" />}
+                              {participant.score < 0 && <Minus className="h-3 w-3" />}
+                              {participant.score}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
