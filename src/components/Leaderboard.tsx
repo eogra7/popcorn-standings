@@ -291,6 +291,24 @@ const Leaderboard = () => {
       const totalSpins = 5; // Number of full rotations
       const totalRotation = 360 * totalSpins + angle;
       
+      // Audio setup for spinning sound
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.type = 'sine';
+      
+      // Start frequency
+      const startFreq = 300;
+      const endFreq = 800;
+      
+      oscillator.frequency.setValueAtTime(startFreq, audioContext.currentTime);
+      gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+      
+      oscillator.start(audioContext.currentTime);
+      
       const animate = () => {
         const elapsed = Date.now() - startTime;
         const progress = Math.min(elapsed / duration, 1);
@@ -301,14 +319,50 @@ const Leaderboard = () => {
         const currentRotation = totalRotation * easeProgress;
         setSpinRotation(currentRotation);
         
+        // Update frequency based on progress
+        const currentFreq = startFreq + (endFreq - startFreq) * progress;
+        oscillator.frequency.setValueAtTime(currentFreq, audioContext.currentTime);
+        
+        // Fade out sound near the end
+        if (progress > 0.9) {
+          const fadeProgress = (progress - 0.9) / 0.1;
+          gainNode.gain.setValueAtTime(0.15 * (1 - fadeProgress), audioContext.currentTime);
+        }
+        
         if (progress < 1) {
           spinAnimationRef.current = requestAnimationFrame(animate);
         } else {
+          // Stop the spinning sound
+          oscillator.stop(audioContext.currentTime);
+          
+          // Play satisfying 'ding' sound
+          const dingOsc1 = audioContext.createOscillator();
+          const dingOsc2 = audioContext.createOscillator();
+          const dingGain = audioContext.createGain();
+          
+          dingOsc1.connect(dingGain);
+          dingOsc2.connect(dingGain);
+          dingGain.connect(audioContext.destination);
+          
+          // Two frequencies for a richer 'ding' sound
+          dingOsc1.frequency.setValueAtTime(1200, audioContext.currentTime);
+          dingOsc2.frequency.setValueAtTime(1800, audioContext.currentTime);
+          dingOsc1.type = 'sine';
+          dingOsc2.type = 'sine';
+          
+          // Bell-like envelope
+          dingGain.gain.setValueAtTime(0.4, audioContext.currentTime);
+          dingGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+          
+          dingOsc1.start(audioContext.currentTime);
+          dingOsc2.start(audioContext.currentTime);
+          dingOsc1.stop(audioContext.currentTime + 0.5);
+          dingOsc2.stop(audioContext.currentTime + 0.5);
+          
           // Animation complete - set the focused index
           setFocusedIndex(randomIndex);
           setIsSpinning(false);
           setSpinRotation(0);
-          playSound(900, 150);
         }
       };
       
@@ -318,6 +372,8 @@ const Leaderboard = () => {
         if (spinAnimationRef.current) {
           cancelAnimationFrame(spinAnimationRef.current);
         }
+        oscillator.stop();
+        audioContext.close();
       };
     }
   }, [mode, participants.length]);
