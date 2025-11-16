@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { Plus, Minus, Info, ArrowUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import {
   Dialog,
   DialogContent,
@@ -59,10 +58,6 @@ const Leaderboard = () => {
   const [summaryCloseTimer, setSummaryCloseTimer] = useState(10);
   const [isEndingMeeting, setIsEndingMeeting] = useState(false);
   const [endMeetingProgress, setEndMeetingProgress] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
-  const [buzzerBaseFreq, setBuzzerBaseFreq] = useState(180);
-  const [lfoFrequency, setLfoFrequency] = useState(8);
-  const [lfoGain, setLfoGain] = useState(30);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -94,21 +89,21 @@ const Leaderboard = () => {
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const lfo = audioContext.createOscillator();
-    const lfoGainNode = audioContext.createGain();
+    const lfoGain = audioContext.createGain();
     const gainNode = audioContext.createGain();
     
     // LFO setup for frequency modulation
-    lfo.frequency.value = lfoFrequency;
-    lfoGainNode.gain.value = lfoGain;
+    lfo.frequency.value = 8; // 8 Hz modulation
+    lfoGain.gain.value = 30; // Modulation depth
     
-    lfo.connect(lfoGainNode);
-    lfoGainNode.connect(oscillator.frequency);
+    lfo.connect(lfoGain);
+    lfoGain.connect(oscillator.frequency);
     
     // Main oscillator
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    oscillator.frequency.value = buzzerBaseFreq;
+    oscillator.frequency.value = 180; // Base frequency
     oscillator.type = 'square';
     
     gainNode.gain.setValueAtTime(0.4, audioContext.currentTime);
@@ -548,9 +543,6 @@ const Leaderboard = () => {
           prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
         );
         playSound(300, 80);
-      } else if (e.key === ",") {
-        e.preventDefault();
-        setShowSettings(true);
       }
     };
 
@@ -670,12 +662,6 @@ const Leaderboard = () => {
                     <div className="space-y-1 text-sm">
                       <p><kbd className="rounded bg-muted px-2 py-1">A</kbd> - Add point (+1)</p>
                       <p><kbd className="rounded bg-muted px-2 py-1">X</kbd> - Remove point (-1)</p>
-                    </div>
-                  </div>
-                  <div>
-                    <h3 className="mb-2 font-semibold">Settings</h3>
-                    <div className="space-y-1 text-sm">
-                      <p><kbd className="rounded bg-muted px-2 py-1">,</kbd> - Open settings menu</p>
                     </div>
                   </div>
                   <div className="rounded-lg bg-muted p-4">
@@ -949,87 +935,6 @@ const Leaderboard = () => {
                 </div>
               </Card>
             </div>
-          </div>
-        )}
-
-        {/* Settings Dialog */}
-        {showSettings && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-            <Card className="w-full max-w-lg p-6 space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold text-foreground mb-2">Audio Settings</h2>
-                <p className="text-sm text-muted-foreground">Customize buzzer sound parameters</p>
-              </div>
-
-              <div className="space-y-6">
-                {/* Base Frequency */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-foreground">Base Frequency</label>
-                    <span className="text-sm text-muted-foreground">{buzzerBaseFreq} Hz</span>
-                  </div>
-                  <Slider
-                    value={[buzzerBaseFreq]}
-                    onValueChange={(value) => setBuzzerBaseFreq(value[0])}
-                    min={50}
-                    max={500}
-                    step={10}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-muted-foreground">The main pitch of the buzzer sound</p>
-                </div>
-
-                {/* LFO Frequency */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-foreground">LFO Frequency</label>
-                    <span className="text-sm text-muted-foreground">{lfoFrequency} Hz</span>
-                  </div>
-                  <Slider
-                    value={[lfoFrequency]}
-                    onValueChange={(value) => setLfoFrequency(value[0])}
-                    min={1}
-                    max={20}
-                    step={1}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-muted-foreground">Speed of the pitch modulation</p>
-                </div>
-
-                {/* LFO Gain */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-foreground">LFO Gain</label>
-                    <span className="text-sm text-muted-foreground">{lfoGain}</span>
-                  </div>
-                  <Slider
-                    value={[lfoGain]}
-                    onValueChange={(value) => setLfoGain(value[0])}
-                    min={0}
-                    max={100}
-                    step={5}
-                    className="w-full"
-                  />
-                  <p className="text-xs text-muted-foreground">Intensity of the pitch modulation</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button 
-                  onClick={playBuzzer}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  Preview Sound
-                </Button>
-                <Button 
-                  onClick={() => setShowSettings(false)}
-                  className="flex-1"
-                >
-                  Close
-                </Button>
-              </div>
-            </Card>
           </div>
         )}
       </div>
