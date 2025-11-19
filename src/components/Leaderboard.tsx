@@ -25,6 +25,7 @@ type Participant = {
   name: string;
   score: number;
   hasSpoken: boolean;
+  hasOfficeHoursTopic: boolean;
 };
 
 type ParticipantStats = {
@@ -32,6 +33,7 @@ type ParticipantStats = {
   name: string;
   score: number;
   speakingTime: number;
+  hasOfficeHoursTopic: boolean;
 };
 
 type Mode = "normal" | "insert" | "meeting";
@@ -48,9 +50,9 @@ const Leaderboard = () => {
       console.error('Failed to load participants from localStorage:', error);
     }
     return [
-      { id: "1", name: "Alice", score: 0, hasSpoken: false },
-      { id: "2", name: "Bob", score: 0, hasSpoken: false },
-      { id: "3", name: "Charlie", score: 0, hasSpoken: false },
+      { id: "1", name: "Alice", score: 0, hasSpoken: false, hasOfficeHoursTopic: false },
+      { id: "2", name: "Bob", score: 0, hasSpoken: false, hasOfficeHoursTopic: false },
+      { id: "3", name: "Charlie", score: 0, hasSpoken: false, hasOfficeHoursTopic: false },
     ];
   };
 
@@ -505,7 +507,8 @@ const Leaderboard = () => {
                 const updatedWithScore = updated.map((p, i) => ({
                   ...p,
                   score: i === focusedIndex ? p.score + 1 : p.score,
-                  hasSpoken: false
+                  hasSpoken: false,
+                  hasOfficeHoursTopic: p.hasOfficeHoursTopic // Preserve office hours flags for summary
                 }));
                 
                 // Prepare meeting summary data
@@ -514,6 +517,7 @@ const Leaderboard = () => {
                   name: p.name,
                   score: p.score,
                   speakingTime: finalSpeakingTimes[p.id] || 0,
+                  hasOfficeHoursTopic: p.hasOfficeHoursTopic,
                 })).sort((a, b) => b.score - a.score);
                 
                 setMeetingSummaryData({
@@ -528,6 +532,11 @@ const Leaderboard = () => {
                   setShowMeetingSummary(true);
                 }
                 playSound(1000, 150); // High success sound
+                
+                // Reset office hours flags after capturing in summary
+                setTimeout(() => {
+                  setParticipants((prev) => prev.map((p) => ({ ...p, hasOfficeHoursTopic: false })));
+                }, 100);
                 
                 return updatedWithScore;
               } else {
@@ -626,7 +635,7 @@ const Leaderboard = () => {
       } else if (e.key === "o") {
         e.preventDefault();
         const newId = Date.now().toString();
-        setParticipants((prev) => [...prev, { id: newId, name: "", score: 0, hasSpoken: false }]);
+        setParticipants((prev) => [...prev, { id: newId, name: "", score: 0, hasSpoken: false, hasOfficeHoursTopic: false }]);
         setFocusedIndex(participants.length);
         setMode("insert");
         setEditValue("");
@@ -648,13 +657,21 @@ const Leaderboard = () => {
           prev.map((p, i) => (i === focusedIndex ? { ...p, hasSpoken: !p.hasSpoken } : p))
         );
         playSound(500, 50);
+      } else if (e.key === "f") {
+        e.preventDefault();
+        if (mode === "meeting") {
+          setParticipants((prev) =>
+            prev.map((p, i) => (i === focusedIndex ? { ...p, hasOfficeHoursTopic: !p.hasOfficeHoursTopic } : p))
+          );
+          playSound(600, 50);
+        }
       } else if (e.ctrlKey && e.key === "s") {
         e.preventDefault();
         if (mode === "meeting") {
           setMode("normal");
           setMeetingTime(0);
           setParticipantSpeakingTimes({});
-          setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
+          setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false, hasOfficeHoursTopic: false })));
           playSound(700, 100);
         } else {
           setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
@@ -873,6 +890,7 @@ const Leaderboard = () => {
                        <p><kbd className="rounded bg-muted px-2 py-1">m</kbd> - Toggle meeting mode</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">r</kbd> - Hold to reveal speaking status</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">s</kbd> - Toggle speaking status</p>
+                       <p><kbd className="rounded bg-muted px-2 py-1">f</kbd> - Flag for office hours topic</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">e (hold 3s)</kbd> - End meeting (awards +1 if all spoke, -1 if not)</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+S</kbd> - Exit meeting mode and reset</p>
                        <p className="text-muted-foreground text-xs mt-1">In meeting mode, j/k auto-scores based on popcorn success. Timer tracks meeting duration.</p>
@@ -1022,6 +1040,11 @@ const Leaderboard = () => {
                             <span className="text-xs text-white font-bold">✓</span>
                           </div>
                         )}
+                        {participant.hasOfficeHoursTopic && mode === "meeting" && (
+                          <div className="absolute -bottom-2 -right-2 h-6 w-6 rounded-full bg-blue-500 border-2 border-background flex items-center justify-center">
+                            <span className="text-xs text-white font-bold">📋</span>
+                          </div>
+                        )}
                       </div>
                       
                       {isEditing ? (
@@ -1163,7 +1186,7 @@ const Leaderboard = () => {
 
                   <div className="space-y-4 mb-6">
                     {meetingSummaryData.stats.map((stat, index) => {
-                      const isOvertime = stat.speakingTime > 30;
+                      const isOvertime = stat.speakingTime > overtimeThreshold;
                       const maxSpeakingTime = Math.max(...meetingSummaryData.stats.map(s => s.speakingTime));
                       const barWidth = maxSpeakingTime > 0 ? (stat.speakingTime / maxSpeakingTime) * 100 : 0;
                       
@@ -1204,6 +1227,23 @@ const Leaderboard = () => {
                       );
                     })}
                   </div>
+
+                  {meetingSummaryData.stats.some(s => s.hasOfficeHoursTopic) && (
+                    <div className="mb-6 p-4 rounded-lg border-2 border-blue-500/30 bg-blue-500/10">
+                      <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+                        <span className="text-blue-500">📋</span> Office Hours Topics
+                      </h3>
+                      <div className="space-y-2">
+                        {meetingSummaryData.stats
+                          .filter(s => s.hasOfficeHoursTopic)
+                          .map(stat => (
+                            <div key={stat.id} className="flex items-center gap-2 text-sm">
+                              <span className="font-medium text-foreground">{stat.name}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="text-center text-sm text-muted-foreground mb-4">
                     Press <kbd className="rounded bg-muted px-2 py-1">q</kbd> to close
