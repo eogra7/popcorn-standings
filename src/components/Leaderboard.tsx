@@ -739,6 +739,32 @@ const Leaderboard = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleParticipantClick = (clickedIndex: number) => {
+    if (mode !== "meeting" || clickedIndex === focusedIndex) {
+      return;
+    }
+
+    const targetParticipant = participants[clickedIndex];
+    if (targetParticipant.hasSpoken) {
+      // Failed selection - penalty
+      setParticipants((prev) =>
+        prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
+      );
+      triggerError(participants[focusedIndex].id);
+    } else {
+      // Successful selection - mark current as spoken and reward
+      setParticipants((prev) =>
+        prev.map((p, i) => 
+          i === focusedIndex 
+            ? { ...p, hasSpoken: true, score: p.score + 1 }
+            : p
+        )
+      );
+      setFocusedIndex(clickedIndex);
+      playSound(800, 100); // High success sound
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="mx-auto max-w-7xl">
@@ -875,7 +901,10 @@ const Leaderboard = () => {
                     <div
                       className={`flex flex-col items-center gap-2 transition-all ${
                         isFocused ? "scale-110" : ""
-                      } ${hasError ? "animate-shake" : ""}`}
+                      } ${hasError ? "animate-shake" : ""} ${
+                        mode === "meeting" && !isFocused ? "cursor-pointer hover:scale-105" : ""
+                      }`}
+                      onClick={() => handleParticipantClick(index)}
                     >
                       <div className="relative">
                         <div
