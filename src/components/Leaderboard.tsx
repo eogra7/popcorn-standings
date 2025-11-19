@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Plus, Minus, Info, ArrowUp } from "lucide-react";
+import { Plus, Minus, Info, ArrowUp, Settings } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,6 +10,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 const getInitials = (name: string): string => {
   if (!name.trim()) return "?";
@@ -80,6 +83,23 @@ const Leaderboard = () => {
   const [endMeetingProgress, setEndMeetingProgress] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [spinRotation, setSpinRotation] = useState(0);
+  const [overtimeThreshold, setOvertimeThreshold] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('leaderboard-overtime-threshold');
+      return saved ? parseInt(saved, 10) : 30;
+    } catch {
+      return 30;
+    }
+  });
+  const [showAutoSummary, setShowAutoSummary] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('leaderboard-auto-summary');
+      return saved ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+  const [showSettings, setShowSettings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -106,6 +126,23 @@ const Leaderboard = () => {
       console.error('Failed to save speaking times to localStorage:', error);
     }
   }, [participantSpeakingTimes]);
+
+  // Persist settings to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('leaderboard-overtime-threshold', overtimeThreshold.toString());
+    } catch (error) {
+      console.error('Failed to save overtime threshold to localStorage:', error);
+    }
+  }, [overtimeThreshold]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('leaderboard-auto-summary', JSON.stringify(showAutoSummary));
+    } catch (error) {
+      console.error('Failed to save auto-summary setting to localStorage:', error);
+    }
+  }, [showAutoSummary]);
 
   // Audio feedback
   const playSound = (frequency: number, duration: number = 50) => {
@@ -257,9 +294,9 @@ const Leaderboard = () => {
     };
   }, [mode, focusedIndex]);
 
-  // Tick-tock sound effect when speaking over 30 seconds
+  // Tick-tock sound effect when speaking over overtime threshold
   useEffect(() => {
-    if (mode === "meeting" && speakingDuration > 30) {
+    if (mode === "meeting" && speakingDuration > overtimeThreshold) {
       if (!tickTockIntervalRef.current) {
         // Play immediately
         playTickTock();
@@ -280,7 +317,7 @@ const Leaderboard = () => {
         clearInterval(tickTockIntervalRef.current);
       }
     };
-  }, [mode, speakingDuration]);
+  }, [mode, speakingDuration, overtimeThreshold]);
 
   // Meeting summary auto-close timer
   useEffect(() => {
@@ -487,7 +524,9 @@ const Leaderboard = () => {
                 setMode("normal");
                 setMeetingTime(0);
                 setParticipantSpeakingTimes({});
-                setShowMeetingSummary(true);
+                if (showAutoSummary) {
+                  setShowMeetingSummary(true);
+                }
                 playSound(1000, 150); // High success sound
                 
                 return updatedWithScore;
@@ -868,6 +907,55 @@ const Leaderboard = () => {
                 </div>
               </DialogContent>
             </Dialog>
+            <Dialog open={showSettings} onOpenChange={setShowSettings}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Settings</DialogTitle>
+                  <DialogDescription>
+                    Configure meeting behavior and preferences
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="overtime-threshold">
+                      Overtime Threshold (seconds)
+                    </Label>
+                    <Input
+                      id="overtime-threshold"
+                      type="number"
+                      min="10"
+                      max="300"
+                      value={overtimeThreshold}
+                      onChange={(e) => setOvertimeThreshold(parseInt(e.target.value) || 30)}
+                      className="w-full"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Time before the overtime indicator appears during speaking
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between space-x-2">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="auto-summary">
+                        Auto-show Summary
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically display meeting summary when ending a meeting
+                      </p>
+                    </div>
+                    <Switch
+                      id="auto-summary"
+                      checked={showAutoSummary}
+                      onCheckedChange={setShowAutoSummary}
+                    />
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
@@ -890,7 +978,7 @@ const Leaderboard = () => {
                 const isEditing = isFocused && mode === "insert";
                 const hasError = errorParticipantId === participant.id;
                 const isSearchMatch = matchesSearch(participant.name);
-                const isOvertime = isFocused && mode === "meeting" && speakingDuration > 30;
+                const isOvertime = isFocused && mode === "meeting" && speakingDuration > overtimeThreshold;
 
                 return (
                   <div
