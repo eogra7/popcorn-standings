@@ -356,8 +356,13 @@ const Leaderboard = () => {
     if (mode === "meeting" && !isSpinning && meetingTime === 0 && participants.length > 0) {
       setIsSpinning(true);
       
-      // Randomly select a participant
-      const randomIndex = Math.floor(Math.random() * participants.length);
+      // Randomly select from participants who haven't spoken yet
+      const eligibleIndices = participants.reduce<number[]>((acc, p, i) => {
+        if (!p.hasSpoken) acc.push(i);
+        return acc;
+      }, []);
+      const pool = eligibleIndices.length > 0 ? eligibleIndices : participants.map((_, i) => i);
+      const randomIndex = pool[Math.floor(Math.random() * pool.length)];
       
       // Calculate angle to the random participant
       const angle = (360 / participants.length) * randomIndex;
