@@ -26,6 +26,7 @@ type Participant = {
   score: number;
   hasSpoken: boolean;
   hasOfficeHoursTopic: boolean;
+  officeHoursTopicComment: string;
 };
 
 type ParticipantStats = {
@@ -34,9 +35,11 @@ type ParticipantStats = {
   score: number;
   speakingTime: number;
   hasOfficeHoursTopic: boolean;
+  officeHoursTopicComment: string;
 };
 
 type Mode = "normal" | "insert" | "meeting";
+type SearchOverlayMode = "participant" | "bonus-topic";
 
 const Leaderboard = () => {
   // Load from localStorage or use defaults
@@ -44,15 +47,25 @@ const Leaderboard = () => {
     try {
       const saved = localStorage.getItem('leaderboard-participants');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((p, index) => ({
+            id: typeof p.id === "string" ? p.id : `participant-${index}`,
+            name: typeof p.name === "string" ? p.name : "",
+            score: typeof p.score === "number" ? p.score : 0,
+            hasSpoken: Boolean(p.hasSpoken),
+            hasOfficeHoursTopic: Boolean(p.hasOfficeHoursTopic),
+            officeHoursTopicComment: typeof p.officeHoursTopicComment === "string" ? p.officeHoursTopicComment : "",
+          }));
+        }
       }
     } catch (error) {
       console.error('Failed to load participants from localStorage:', error);
     }
     return [
-      { id: "1", name: "Alice", score: 0, hasSpoken: false, hasOfficeHoursTopic: false },
-      { id: "2", name: "Bob", score: 0, hasSpoken: false, hasOfficeHoursTopic: false },
-      { id: "3", name: "Charlie", score: 0, hasSpoken: false, hasOfficeHoursTopic: false },
+      { id: "1", name: "Alice", score: 0, hasSpoken: false, hasOfficeHoursTopic: false, officeHoursTopicComment: "" },
+      { id: "2", name: "Bob", score: 0, hasSpoken: false, hasOfficeHoursTopic: false, officeHoursTopicComment: "" },
+      { id: "3", name: "Charlie", score: 0, hasSpoken: false, hasOfficeHoursTopic: false, officeHoursTopicComment: "" },
     ];
   };
 
@@ -62,6 +75,8 @@ const Leaderboard = () => {
   const [editValue, setEditValue] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchOverlayMode, setSearchOverlayMode] = useState<SearchOverlayMode>("participant");
+  const [bonusTopicParticipantId, setBonusTopicParticipantId] = useState<string | null>(null);
   const [errorParticipantId, setErrorParticipantId] = useState<string | null>(null);
   const [meetingTime, setMeetingTime] = useState(0);
   const [isRevealingStatus, setIsRevealingStatus] = useState(false);
@@ -512,8 +527,7 @@ const Leaderboard = () => {
                 const updatedWithScore = updated.map((p, i) => ({
                   ...p,
                   score: i === focusedIndex ? p.score + 1 : p.score,
-                  hasSpoken: false,
-                  hasOfficeHoursTopic: p.hasOfficeHoursTopic // Preserve office hours flags for summary
+                  hasSpoken: false
                 }));
                 
                 // Prepare meeting summary data
@@ -523,6 +537,7 @@ const Leaderboard = () => {
                   score: p.score,
                   speakingTime: finalSpeakingTimes[p.id] || 0,
                   hasOfficeHoursTopic: p.hasOfficeHoursTopic,
+                  officeHoursTopicComment: p.officeHoursTopicComment,
                 })).sort((a, b) => b.score - a.score);
                 
                 setMeetingSummaryData({
@@ -537,11 +552,6 @@ const Leaderboard = () => {
                   setShowMeetingSummary(true);
                 }
                 playSound(1000, 150); // High success sound
-                
-                // Reset office hours flags after capturing in summary
-                setTimeout(() => {
-                  setParticipants((prev) => prev.map((p) => ({ ...p, hasOfficeHoursTopic: false })));
-                }, 100);
                 
                 return updatedWithScore;
               } else {
@@ -572,40 +582,61 @@ const Leaderboard = () => {
           e.preventDefault();
           setIsSearching(false);
           setSearchQuery("");
+          setSearchOverlayMode("participant");
+          setBonusTopicParticipantId(null);
         } else if (e.key === "Enter") {
           e.preventDefault();
-          const matchIndex = participants.findIndex((p) =>
-            p.name.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-          if (matchIndex !== -1) {
-            // Apply meeting mode logic if in meeting mode
-            if (mode === "meeting") {
-              const targetParticipant = participants[matchIndex];
-              if (targetParticipant.hasSpoken) {
-                // Failed selection - penalty, don't move focus
-                setParticipants((prev) =>
-                  prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
-                );
-                triggerError(participants[focusedIndex].id);
+          if (searchOverlayMode === "participant") {
+            const matchIndex = participants.findIndex((p) =>
+              p.name.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+            if (matchIndex !== -1) {
+              // Apply meeting mode logic if in meeting mode
+              if (mode === "meeting") {
+                const targetParticipant = participants[matchIndex];
+                if (targetParticipant.hasSpoken) {
+                  // Failed selection - penalty, don't move focus
+                  setParticipants((prev) =>
+                    prev.map((p, i) => (i === focusedIndex ? { ...p, score: p.score - 1 } : p))
+                  );
+                  triggerError(participants[focusedIndex].id);
+                } else {
+                  // Successful selection - mark current as spoken and reward
+                  setParticipants((prev) =>
+                    prev.map((p, i) => 
+                      i === focusedIndex 
+                        ? { ...p, hasSpoken: true, score: p.score + 1 }
+                        : p
+                    )
+                  );
+                  setFocusedIndex(matchIndex);
+                  playSound(800, 100); // High success sound
+                }
               } else {
-                // Successful selection - mark current as spoken and reward
-                setParticipants((prev) =>
-                  prev.map((p, i) => 
-                    i === focusedIndex 
-                      ? { ...p, hasSpoken: true, score: p.score + 1 }
-                      : p
-                  )
-                );
+                // Normal mode - always move focus
                 setFocusedIndex(matchIndex);
-                playSound(800, 100); // High success sound
               }
-            } else {
-              // Normal mode - always move focus
-              setFocusedIndex(matchIndex);
             }
+          } else if (searchOverlayMode === "bonus-topic" && bonusTopicParticipantId) {
+            const topic = searchQuery.trim();
+            setParticipants((prev) =>
+              prev.map((p) =>
+                p.id === bonusTopicParticipantId
+                  ? {
+                      ...p,
+                      hasOfficeHoursTopic: topic.length > 0,
+                      officeHoursTopicComment: topic,
+                    }
+                  : p
+              )
+            );
+            playSound(topic.length > 0 ? 600 : 300, 50);
           }
+
           setIsSearching(false);
           setSearchQuery("");
+          setSearchOverlayMode("participant");
+          setBonusTopicParticipantId(null);
         }
         return; // Don't process other keys when searching
       }
@@ -629,6 +660,8 @@ const Leaderboard = () => {
       // Normal and meeting mode commands
       if (e.key === "/") {
         e.preventDefault();
+        setSearchOverlayMode("participant");
+        setBonusTopicParticipantId(null);
         setIsSearching(true);
         setSearchQuery("");
         setTimeout(() => searchInputRef.current?.focus(), 0);
@@ -640,7 +673,7 @@ const Leaderboard = () => {
       } else if (e.key === "o") {
         e.preventDefault();
         const newId = Date.now().toString();
-        setParticipants((prev) => [...prev, { id: newId, name: "", score: 0, hasSpoken: false, hasOfficeHoursTopic: false }]);
+        setParticipants((prev) => [...prev, { id: newId, name: "", score: 0, hasSpoken: false, hasOfficeHoursTopic: false, officeHoursTopicComment: "" }]);
         setFocusedIndex(participants.length);
         setMode("insert");
         setEditValue("");
@@ -653,6 +686,12 @@ const Leaderboard = () => {
           setSpinRotation(0);
           playSound(400, 100);
         } else {
+          if (meetingTime === 0) {
+            // Fresh meeting start: clear previous meeting's bonus topics.
+            setParticipants((prev) =>
+              prev.map((p) => ({ ...p, hasOfficeHoursTopic: false, officeHoursTopicComment: "" }))
+            );
+          }
           setMode("meeting");
           playSound(800, 100);
         }
@@ -664,11 +703,13 @@ const Leaderboard = () => {
         playSound(500, 50);
       } else if (e.key === "f") {
         e.preventDefault();
-        if (mode === "meeting") {
-          setParticipants((prev) =>
-            prev.map((p, i) => (i === focusedIndex ? { ...p, hasOfficeHoursTopic: !p.hasOfficeHoursTopic } : p))
-          );
-          playSound(600, 50);
+        if (mode === "meeting" && participants[focusedIndex]) {
+          const participant = participants[focusedIndex];
+          setSearchOverlayMode("bonus-topic");
+          setBonusTopicParticipantId(participant.id);
+          setSearchQuery(participant.officeHoursTopicComment);
+          setIsSearching(true);
+          setTimeout(() => searchInputRef.current?.focus(), 0);
         }
       } else if (e.ctrlKey && e.key === "s") {
         e.preventDefault();
@@ -676,7 +717,7 @@ const Leaderboard = () => {
           setMode("normal");
           setMeetingTime(0);
           setParticipantSpeakingTimes({});
-          setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false, hasOfficeHoursTopic: false })));
+          setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false, hasOfficeHoursTopic: false, officeHoursTopicComment: "" })));
           playSound(700, 100);
         } else {
           setParticipants((prev) => prev.map((p) => ({ ...p, hasSpoken: false })));
@@ -781,7 +822,7 @@ const Leaderboard = () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery, isRevealingStatus, showMeetingSummary, meetingTime, participantSpeakingTimes, speakingDuration, isEndingMeeting]);
+  }, [mode, focusedIndex, participants, editValue, isSearching, searchQuery, searchOverlayMode, bonusTopicParticipantId, isRevealingStatus, showMeetingSummary, meetingTime, participantSpeakingTimes, speakingDuration, isEndingMeeting]);
 
   // Calculate angle for arrow rotation to point at focused participant
   const angleToFocused = participants.length > 0 
@@ -790,9 +831,11 @@ const Leaderboard = () => {
 
   // Filter participants based on search query
   const matchesSearch = (name: string) => {
-    if (!isSearching || !searchQuery) return false;
+    if (!isSearching || searchOverlayMode !== "participant" || !searchQuery) return false;
     return name.toLowerCase().includes(searchQuery.toLowerCase());
   };
+
+  const bonusTopicParticipants = participants.filter((p) => p.hasOfficeHoursTopic);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -895,7 +938,7 @@ const Leaderboard = () => {
                        <p><kbd className="rounded bg-muted px-2 py-1">m</kbd> - Toggle meeting mode</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">r</kbd> - Hold to reveal speaking status</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">s</kbd> - Toggle speaking status</p>
-                       <p><kbd className="rounded bg-muted px-2 py-1">f</kbd> - Flag for office hours topic</p>
+                       <p><kbd className="rounded bg-muted px-2 py-1">f</kbd> - Add/edit bonus time topic</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">e (hold 3s)</kbd> - End meeting (awards +1 if all spoke, -1 if not)</p>
                        <p><kbd className="rounded bg-muted px-2 py-1">Ctrl+S</kbd> - Exit meeting mode and reset</p>
                        <p className="text-muted-foreground text-xs mt-1">In meeting mode, j/k auto-scores based on popcorn success. Timer tracks meeting duration.</p>
@@ -1104,6 +1147,26 @@ const Leaderboard = () => {
           )}
         </div>
 
+        {bonusTopicParticipants.length > 0 && (
+          <div className="mt-6 mx-auto max-w-3xl">
+            <Card className="border-2 border-blue-500/30 bg-blue-500/10 p-4">
+              <h3 className="text-sm font-semibold text-foreground">Bonus Time Topics</h3>
+              <div className="mt-3 space-y-2">
+                {bonusTopicParticipants.map((participant) => (
+                  <div key={participant.id} className="text-sm">
+                    <span className="font-medium text-foreground">
+                      {participant.name || "(unnamed)"}:
+                    </span>
+                    <span className="ml-2 text-muted-foreground">
+                      {participant.officeHoursTopicComment || "No topic entered yet"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        )}
+
         <div className="mt-6 flex flex-col items-center gap-2">
           <div className="flex justify-center gap-4 text-sm text-muted-foreground">
             <span>Press <kbd className="rounded bg-muted px-2 py-1">j/k</kbd> to navigate</span>
@@ -1120,23 +1183,30 @@ const Leaderboard = () => {
             <div className="w-full max-w-md animate-in slide-in-from-bottom-4 duration-200">
               <div className="rounded-lg border-2 border-primary bg-card px-6 py-4 shadow-lg">
                 <div className="flex items-center gap-3">
-                  <span className="text-primary font-mono text-lg">/</span>
+                  <span className="text-primary font-mono text-lg">
+                    {searchOverlayMode === "participant" ? "/" : "f"}
+                  </span>
                   <input
                     ref={searchInputRef}
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="flex-1 bg-transparent border-none outline-none text-foreground font-mono text-lg placeholder:text-muted-foreground"
-                    placeholder="Search participant..."
+                    placeholder={searchOverlayMode === "participant" ? "Search participant..." : "Enter bonus time topic..."}
                     autoFocus
                   />
                   <span className="text-xs text-muted-foreground">
                     ESC to cancel
                   </span>
                 </div>
-                {searchQuery && (
+                {searchOverlayMode === "participant" && searchQuery && (
                   <div className="mt-2 text-sm text-muted-foreground">
                     {participants.filter(p => matchesSearch(p.name)).length} match(es) found
+                  </div>
+                )}
+                {searchOverlayMode === "bonus-topic" && (
+                  <div className="mt-2 text-sm text-muted-foreground">
+                    Press Enter to save topic. Submit empty text to clear the bonus flag.
                   </div>
                 )}
               </div>
@@ -1236,14 +1306,17 @@ const Leaderboard = () => {
                   {meetingSummaryData.stats.some(s => s.hasOfficeHoursTopic) && (
                     <div className="mb-6 p-4 rounded-lg border-2 border-blue-500/30 bg-blue-500/10">
                       <h3 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <span className="text-blue-500">📋</span> Office Hours Topics
+                        <span className="text-blue-500">📋</span> Bonus Time Topics
                       </h3>
                       <div className="space-y-2">
                         {meetingSummaryData.stats
                           .filter(s => s.hasOfficeHoursTopic)
                           .map(stat => (
-                            <div key={stat.id} className="flex items-center gap-2 text-sm">
-                              <span className="font-medium text-foreground">{stat.name}</span>
+                            <div key={stat.id} className="text-sm">
+                              <span className="font-medium text-foreground">{stat.name}:</span>
+                              <span className="ml-2 text-muted-foreground">
+                                {stat.officeHoursTopicComment || "No topic entered"}
+                              </span>
                             </div>
                           ))}
                       </div>
