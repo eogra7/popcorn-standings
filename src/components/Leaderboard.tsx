@@ -490,7 +490,7 @@ const Leaderboard = () => {
       }
 
       // Handle 'e' key hold for ending meeting
-      if (e.key === "e" && mode === "meeting" && !isEndingMeeting && !e.repeat) {
+      if (e.key === "e" && mode === "meeting" && !isSearching && !isEndingMeeting && !e.repeat) {
         setIsEndingMeeting(true);
         setEndMeetingProgress(0);
         
